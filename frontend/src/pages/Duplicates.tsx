@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDuplicates, useDeleteAlbum } from '../hooks/useBeets.ts'
 import ConfirmDialog from '../components/ConfirmDialog.tsx'
 import FormatBadge, { isLossless } from '../components/FormatBadge.tsx'
+import { addToast } from '../hooks/useToast.ts'
 import type { AlbumSummary, DuplicateGroup } from '../types/beets.ts'
 
 const reasonConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -275,17 +276,6 @@ function DuplicateGroupCard({
             label="Year"
             values={copies.map(a => ({ id: a.id, content: a.year > 0 ? `${a.year}` : '—' }))}
           />
-
-          <DiffRow
-            label="Path"
-            values={copies.map(a => ({
-              id: a.id,
-              content: (
-                <span className="font-mono text-xs text-[var(--text-muted)] break-all">{a.path}</span>
-              ),
-            }))}
-            className="mt-2"
-          />
         </div>
       )}
     </div>
@@ -405,10 +395,19 @@ export default function Duplicates() {
       {confirm && (
         <ConfirmDialog
           title="Delete album"
-          description={`Permanently delete "${confirm.album}" by ${confirm.albumartist} and all its files?\n\nFormat: ${confirm.formats.join(', ')} · ${confirm.trackCount} tracks · ${formatBitrate(confirm.avgBitrate)}\nPath: ${confirm.path}\n\nThis cannot be undone.`}
+          description={`Permanently delete "${confirm.album}" by ${confirm.albumartist} and all its files?\n\nFormat: ${confirm.formats.join(', ')} · ${confirm.trackCount} tracks · ${formatBitrate(confirm.avgBitrate)}\n\nThis cannot be undone.`}
           onConfirm={() => {
+            const albumName = confirm.album
+            const artistName = confirm.albumartist
             deleteAlbum.mutate(confirm.id, {
-              onSuccess: () => setConfirm(null),
+              onSuccess: () => {
+                addToast('success', 'Album deleted', `"${albumName}" by ${artistName} has been removed.`)
+                setConfirm(null)
+              },
+              onError: (err) => {
+                addToast('error', 'Delete failed', String(err))
+                setConfirm(null)
+              },
             })
           }}
           onCancel={() => setConfirm(null)}

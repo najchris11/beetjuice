@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Nav from './components/Nav.tsx'
+import ToastContainer from './components/ToastContainer.tsx'
 import Library from './pages/Library.tsx'
 import AlbumDetail from './pages/AlbumDetail.tsx'
 import Duplicates from './pages/Duplicates.tsx'
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/duplicates" element={<Duplicates />} />
           </Routes>
         </main>
+        <ToastContainer />
       </div>
     </BrowserRouter>
   )

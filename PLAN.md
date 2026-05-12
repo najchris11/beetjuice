@@ -255,11 +255,12 @@ docker run -e BEETS_API_URL=http://192.168.1.x:8337 -p 3001:3001 beetjuice
 4. ✅ Filter by detection reason (MusicBrainz / Name match / Fuzzy) with counts
 5. ✅ Delete button wired per copy with rich confirmation
 
-### Phase 3 — Deletion
-1. Backend delete endpoints (`DELETE /api/albums/:id`, `DELETE /api/items/:id`)
-2. Verify `?delete` behaviour for albums; implement fallback if needed
-3. Confirmation modal (shows name, format, path)
-4. Optimistic UI update on success
+### Phase 3 — Deletion ✅
+1. ✅ Backend delete endpoints with fallback (direct album delete → item-by-item fallback)
+2. ✅ Verified `DELETE /album/{id}?delete` removes DB record + files (tested on album 1878)
+3. ✅ Confirmation modal shows name, artist, format, track count, bitrate
+4. ✅ Optimistic UI update (instant removal from cache, rollback on failure)
+5. ✅ Toast notifications for success/error feedback
 
 ### Phase 4 — Polish
 1. Loading skeletons, error states

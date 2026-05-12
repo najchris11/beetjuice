@@ -31,8 +31,10 @@ router.get('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     await beetsDelete(`/item/${req.params.id}`, true)
-    res.status(204).end()
+    console.log(`DELETE /api/items/${req.params.id}: item deleted`)
+    res.json({ ok: true })
   } catch (err) {
+    console.error(`DELETE /api/items/${req.params.id} error:`, err)
     res.status(502).json({ error: String(err) })
   }
 })

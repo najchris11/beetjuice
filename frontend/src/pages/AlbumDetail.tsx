@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAlbum, useAlbumItems, useDeleteAlbum, useDeleteItem } from '../hooks/useBeets.ts'
 import FormatBadge from '../components/FormatBadge.tsx'
 import ConfirmDialog from '../components/ConfirmDialog.tsx'
+import { addToast } from '../hooks/useToast.ts'
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -185,7 +186,14 @@ export default function AlbumDetail() {
           description={`Permanently delete "${album.album}" by ${album.albumartist} and all its files? This cannot be undone.`}
           onConfirm={() => {
             deleteAlbum.mutate(album.id, {
-              onSuccess: () => navigate('/'),
+              onSuccess: () => {
+                addToast('success', 'Album deleted', `"${album.album}" by ${album.albumartist} has been removed.`)
+                navigate('/')
+              },
+              onError: (err) => {
+                addToast('error', 'Delete failed', String(err))
+                setConfirmAlbum(false)
+              },
             })
           }}
           onCancel={() => setConfirmAlbum(false)}
@@ -200,7 +208,14 @@ export default function AlbumDetail() {
           description={`Permanently delete "${confirmItemData.title}" and its file? This cannot be undone.`}
           onConfirm={() => {
             deleteItem.mutate(confirmItem, {
-              onSuccess: () => setConfirmItem(null),
+              onSuccess: () => {
+                addToast('success', 'Track deleted', `"${confirmItemData.title}" has been removed.`)
+                setConfirmItem(null)
+              },
+              onError: (err) => {
+                addToast('error', 'Delete failed', String(err))
+                setConfirmItem(null)
+              },
             })
           }}
           onCancel={() => setConfirmItem(null)}
