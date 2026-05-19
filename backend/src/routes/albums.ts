@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
 import { enrichAlbum } from '../lib/duplicates.js'
+import { deleteDir, readArtwork, musicPath } from '../lib/files.js'
 import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
 const router = Router()
@@ -31,6 +32,24 @@ router.get('/:id', async (req, res) => {
 })
 
 router.get('/:id/art', async (req, res) => {
+  // Prefer serving artwork directly from the mounted filesystem (faster, no proxy hop)
+  if (musicPath()) {
+    try {
+      const album = await beetsGet<Album>(`/album/${req.params.id}`)
+      if (album.artpath) {
+        const art = await readArtwork(album.artpath)
+        if (art) {
+          res.set('Content-Type', art.contentType)
+          res.set('Cache-Control', 'public, max-age=86400')
+          res.send(art.data)
+          return
+        }
+      }
+    } catch {
+      // fall through to beets proxy
+    }
+  }
+  // Fall back to beets web plugin proxy
   try {
     const upstream = await beetsGetRaw(`/album/${req.params.id}/art`)
     res.set('Content-Type', upstream.headers.get('content-type') ?? 'image/jpeg')
@@ -54,38 +73,29 @@ router.get('/:id/items', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const albumId = req.params.id
   try {
-    // Workaround: beets Album.remove(delete=True) has a bug where it deletes
-    // the album DB row before iterating items, causing self.items() to return
-    // empty and skipping file deletion entirely. Instead, we delete each item
-    // individually (which correctly removes files), then clean up the album record.
-    // See: https://github.com/beetbox/beets/issues/XXXX
+    // 1. Get the album to retrieve its directory path
+    const album = await beetsGet<Album>(`/album/${albumId}`)
 
-    // 1. Get all items for this album
-    const data = await beetsGet<{ results: Item[] }>(`/item/query/album_id:${albumId}`)
-    const items = data.results ?? []
-
-    // 2. Delete each item with ?delete (removes DB record + file from disk)
-    const itemResults = await Promise.allSettled(
-      items.map(item => beetsDelete(`/item/${item.id}`, true))
-    )
-    const failedItems = itemResults.filter(r => r.status === 'rejected')
-    if (failedItems.length > 0) {
-      console.warn(`DELETE /api/albums/${albumId}: ${failedItems.length}/${items.length} item deletes failed`)
+    let filesDeleted = false
+    if (musicPath() && album.path) {
+      // 2a. Delete album directory from filesystem (covers tracks + artwork + any other files)
+      filesDeleted = await deleteDir(album.path)
+      if (!filesDeleted) {
+        console.warn(`DELETE /api/albums/${albumId}: directory not found on disk: ${album.path}`)
+      }
+    } else {
+      console.warn(`DELETE /api/albums/${albumId}: MUSIC_PATH not set — skipping file deletion`)
     }
 
-    // 3. Clean up the album record (no ?delete needed — files already handled)
+    // 3. Remove from beets DB (no ?delete — we handled files above)
     try {
       await beetsDelete(`/album/${albumId}`, false)
     } catch {
-      // Album record might already be gone if beets auto-cleaned it after last item was removed
+      // Album record may already be gone if beets auto-cleaned after items were removed
     }
 
-    console.log(`DELETE /api/albums/${albumId}: deleted ${items.length - failedItems.length}/${items.length} items`)
-    res.json({
-      ok: true,
-      itemsDeleted: items.length - failedItems.length,
-      itemsFailed: failedItems.length,
-    })
+    console.log(`DELETE /api/albums/${albumId}: ok (filesDeleted=${filesDeleted})`)
+    res.json({ ok: true, filesDeleted })
   } catch (err) {
     console.error(`DELETE /api/albums/${albumId}: failed`, err)
     res.status(502).json({ error: `Failed to delete album: ${String(err)}` })

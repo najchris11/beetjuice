@@ -34,6 +34,8 @@ COPY --from=build /app/frontend/dist ./frontend/dist
 ENV PORT=3001
 ENV PUID=99
 ENV PGID=100
+# Set to the internal mount path of your music library (same path as your beets container uses)
+ENV MUSIC_PATH=/music
 
 EXPOSE 3001
 

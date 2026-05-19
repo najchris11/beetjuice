@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>beetjuice</Name>
+  <Repository>ghcr.io/najchris11/beetjuice:latest</Repository>
+  <Registry>https://ghcr.io/najchris11/beetjuice</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Overview>Web UI for browsing and managing a beets music library. Handles duplicate detection, library browsing, and safe file deletion. Companion to beets-flask (which handles importing). Requires the beets web plugin running with readonly: no.</Overview>
+  <Category>MediaApp:Music</Category>
+  <WebUI>http://[IP]:[PORT:3001]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/najchris11/beetjuice/main/frontend/public/favicon.ico</Icon>
+
+  <!-- Port -->
+  <Config
+    Name="WebUI Port"
+    Target="3001"
+    Default="3001"
+    Mode="tcp"
+    Description="Port to access the beetjuice web interface."
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">3001</Config>
+
+  <!-- Required environment variables -->
+  <Config
+    Name="Beets API URL"
+    Target="BEETS_API_URL"
+    Default="http://beets:8337"
+    Mode=""
+    Description="URL of the beets web plugin. If beetjuice and beets share a Docker network, use the container name (e.g. http://beets:8337). Otherwise use your server IP and port."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">http://beets:8337</Config>
+
+  <Config
+    Name="Music Path (internal)"
+    Target="MUSIC_PATH"
+    Default="/music"
+    Mode=""
+    Description="Internal container path where your music library is mounted. Must match the path your beets container uses for the same share so file paths align."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">/music</Config>
+
+  <!-- Volume mounts -->
+  <Config
+    Name="Music Library"
+    Target="/music"
+    Default="/mnt/user/music"
+    Mode="rw"
+    Description="Path to your music library on the Unraid host. Mount the same share your beets container uses. Read-write access is required for file deletion."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/music</Config>
+
+  <!-- Advanced -->
+  <Config
+    Name="PUID"
+    Target="PUID"
+    Default="99"
+    Mode=""
+    Description="User ID for file operations. 99 = nobody on Unraid (standard)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">99</Config>
+
+  <Config
+    Name="PGID"
+    Target="PGID"
+    Default="100"
+    Mode=""
+    Description="Group ID for file operations. 100 = users on Unraid (standard)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">100</Config>
+
+  <Config
+    Name="Internal Port"
+    Target="PORT"
+    Default="3001"
+    Mode=""
+    Description="Internal port beetjuice listens on. Only change if you have a port conflict and understand the implications."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">3001</Config>
+</Container>

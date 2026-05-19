@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { beetsGet, beetsDelete } from '../services/beets.js'
+import { deleteFile, musicPath } from '../lib/files.js'
 import type { Item } from '../types/beets.js'
 
 const router = Router()
@@ -29,12 +30,29 @@ router.get('/:id', async (req, res) => {
 })
 
 router.delete('/:id', async (req, res) => {
+  const itemId = req.params.id
   try {
-    await beetsDelete(`/item/${req.params.id}`, true)
-    console.log(`DELETE /api/items/${req.params.id}: item deleted`)
-    res.json({ ok: true })
+    // 1. Get the item to retrieve its file path
+    const item = await beetsGet<Item>(`/item/${itemId}`)
+
+    let fileDeleted = false
+    if (musicPath() && item.path) {
+      // 2. Delete the file from filesystem
+      fileDeleted = await deleteFile(item.path)
+      if (!fileDeleted) {
+        console.warn(`DELETE /api/items/${itemId}: file not found on disk: ${item.path}`)
+      }
+    } else {
+      console.warn(`DELETE /api/items/${itemId}: MUSIC_PATH not set — skipping file deletion`)
+    }
+
+    // 3. Remove from beets DB (no ?delete — we handled the file above)
+    await beetsDelete(`/item/${itemId}`, false)
+
+    console.log(`DELETE /api/items/${itemId}: ok (fileDeleted=${fileDeleted})`)
+    res.json({ ok: true, fileDeleted })
   } catch (err) {
-    console.error(`DELETE /api/items/${req.params.id} error:`, err)
+    console.error(`DELETE /api/items/${itemId} error:`, err)
     res.status(502).json({ error: String(err) })
   }
 })
