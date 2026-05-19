@@ -105,14 +105,22 @@ export function useBulkDeleteAlbums() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (ids: number[]) => {
-      const results = await Promise.allSettled(
-        ids.map(id => apiFetch<{ ok: boolean; filesDeleted: boolean }>(`/api/albums/${id}`, { method: 'DELETE' }))
-      )
-      const failures = results.filter(r => r.status === 'rejected')
-      if (failures.length > 0) throw new Error(`${failures.length} of ${ids.length} deletions failed`)
+      const BATCH = 10
+      const results: { ok: boolean; filesDeleted: boolean }[] = []
+      let failed = 0
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const settled = await Promise.allSettled(
+          ids.slice(i, i + BATCH).map(id =>
+            apiFetch<{ ok: boolean; filesDeleted: boolean }>(`/api/albums/${id}`, { method: 'DELETE' })
+          )
+        )
+        for (const r of settled) {
+          if (r.status === 'fulfilled') results.push(r.value)
+          else failed++
+        }
+      }
+      if (failed > 0) throw new Error(`${failed} of ${ids.length} deletions failed`)
       return results
-        .filter((r): r is PromiseFulfilledResult<{ ok: boolean; filesDeleted: boolean }> => r.status === 'fulfilled')
-        .map(r => r.value)
     },
     onMutate: async (deletedIds) => {
       await qc.cancelQueries({ queryKey: ['albums'] })

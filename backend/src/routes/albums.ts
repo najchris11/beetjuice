@@ -33,26 +33,27 @@ router.get('/', async (_req, res) => {
         list.push(item)
         itemsByAlbum.set(item.album_id, list)
       }
-      await Promise.all(
-        enriched
-          .filter(a => a.totalSize === 0)
-          .map(async album => {
-            const albumItems = itemsByAlbum.get(album.id) ?? []
-            let diskSize = 0
-            await Promise.all(
-              albumItems.map(async item => {
-                if (!item.path) return
-                const resolved = resolvePath(item.path)
-                if (!resolved.startsWith(mp)) return
-                try {
-                  const stat = await fs.stat(resolved)
-                  diskSize += stat.size
-                } catch { /* file not accessible */ }
-              })
-            )
-            if (diskSize > 0) album.totalSize = diskSize
-          })
-      )
+
+      const diskSizes = new Map<number, number>()
+      const statTasks: Promise<void>[] = []
+      for (const album of enriched) {
+        if (album.totalSize !== 0) continue
+        for (const item of itemsByAlbum.get(album.id) ?? []) {
+          if (!item.path) continue
+          const resolved = resolvePath(item.path)
+          if (!resolved.startsWith(mp)) continue
+          statTasks.push(
+            fs.stat(resolved)
+              .then(s => { diskSizes.set(album.id, (diskSizes.get(album.id) ?? 0) + s.size) })
+              .catch(() => {})
+          )
+        }
+      }
+      await Promise.all(statTasks)
+      for (const album of enriched) {
+        const size = diskSizes.get(album.id)
+        if (size) album.totalSize = size
+      }
     }
 
     cache.set('albums', enriched, ALBUMS_TTL)
@@ -127,10 +128,8 @@ router.delete('/:id', async (req, res) => {
       if (!resolvedPath.startsWith(mp)) {
         logger.warn(`album ${albumId}: resolved path "${resolvedPath}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
       } else {
-        try {
-          await fs.access(resolvedPath, fs.constants.F_OK)
-          filesDeleted = await deleteDir(resolvedPath)
-        } catch {
+        filesDeleted = await deleteDir(resolvedPath)
+        if (!filesDeleted) {
           logger.warn(`album ${albumId}: directory not found at ${resolvedPath} — falling back to item-by-item deletion`)
         }
       }
@@ -146,25 +145,21 @@ router.delete('/:id', async (req, res) => {
         logger.info(`album ${albumId}: no album path — deleting ${items.length} item file(s) individually`)
         let dirToRemove: string | undefined
         let deletedCount = 0
-        for (const item of items) {
-          if (!item.path) continue
+        await Promise.all(items.map(async item => {
+          if (!item.path) return
           const resolvedPath = resolvePath(item.path)
           if (!resolvedPath.startsWith(mp)) {
             logger.warn(`album ${albumId} item ${item.id}: path outside MUSIC_PATH — skipping`)
-            continue
+            return
           }
-          try {
-            await fs.access(resolvedPath, fs.constants.F_OK)
-            const deleted = await deleteFile(resolvedPath)
-            if (deleted) {
-              deletedCount++
-              // Track parent dir so we can clean it up after
-              dirToRemove ??= resolvedPath.substring(0, resolvedPath.lastIndexOf('/'))
-            }
-          } catch {
+          const deleted = await deleteFile(resolvedPath)
+          if (deleted) {
+            deletedCount++
+            dirToRemove ??= resolvedPath.substring(0, resolvedPath.lastIndexOf('/'))
+          } else {
             logger.warn(`album ${albumId} item ${item.id}: file not found at ${resolvedPath}`)
           }
-        }
+        }))
         // Remove the (now-empty) album directory if all files came from the same dir
         if (dirToRemove && dirToRemove.startsWith(mp)) {
           try {

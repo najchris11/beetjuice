@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { AlbumSummary } from '../types/beets.ts'
 import FormatBadge from './FormatBadge.tsx'
+import { formatBytes } from '../utils/format.ts'
 
 interface Props {
   album: AlbumSummary
@@ -8,14 +9,6 @@ interface Props {
   selectMode?: boolean
   selected?: boolean
   onSelect?: (id: number) => void
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
 function AlbumArtFallback({ name }: { name: string }) {
@@ -49,7 +42,7 @@ export default function AlbumCard({ album, style, selectMode, selected, onSelect
           onError={e => {
             const img = e.currentTarget as HTMLImageElement
             img.style.display = 'none'
-            const fallback = img.nextElementSibling as HTMLElement
+            const fallback = img.nextElementSibling as HTMLElement | null
             if (fallback) fallback.style.display = 'flex'
           }}
         />

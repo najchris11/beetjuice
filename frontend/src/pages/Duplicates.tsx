@@ -4,6 +4,7 @@ import { useDuplicates, useDeleteAlbum } from '../hooks/useBeets.ts'
 import ConfirmDialog from '../components/ConfirmDialog.tsx'
 import FormatBadge, { isLossless } from '../components/FormatBadge.tsx'
 import { addToast } from '../hooks/useToast.ts'
+import { formatBitrate, formatDuration, formatSamplerate } from '../utils/format.ts'
 import type { AlbumSummary, DuplicateGroup } from '../types/beets.ts'
 
 const reasonConfig: Record<string, { label: string; color: string; icon: string }> = {
@@ -25,22 +26,6 @@ const reasonConfig: Record<string, { label: string; color: string; icon: string 
 }
 
 type FilterReason = 'all' | 'mb_albumid' | 'normalized_name' | 'fuzzy'
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function formatBitrate(bps: number): string {
-  return `${Math.round(bps / 1000)} kbps`
-}
-
-function formatSamplerate(hz: number): string {
-  return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 ? 1 : 0)} kHz` : `${hz} Hz`
-}
 
 /** Determine which copy has the "best" quality for a given metric */
 function findBest<T>(copies: AlbumSummary[], getValue: (a: AlbumSummary) => T, compare: (a: T, b: T) => number): Set<number> {

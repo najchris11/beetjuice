@@ -4,6 +4,7 @@ import type { AlbumSummary } from '../types/beets.ts'
 import AlbumCard from '../components/AlbumCard.tsx'
 import ConfirmDialog from '../components/ConfirmDialog.tsx'
 import { addToast } from '../hooks/useToast.ts'
+import { formatBytes } from '../utils/format.ts'
 
 type SortKey = 'artist' | 'album' | 'year-desc' | 'year-asc' | 'size-desc' | 'size-asc'
 
@@ -14,14 +15,6 @@ const sortLabels: Record<SortKey, string> = {
   'year-asc': 'Year ↑',
   'size-desc': 'Size ↓',
   'size-asc': 'Size ↑',
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
 export default function Library() {

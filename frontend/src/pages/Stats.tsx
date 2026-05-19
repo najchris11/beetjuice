@@ -1,23 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useStats } from '../hooks/useBeets.ts'
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-}
-
-function formatDuration(seconds: number): string {
-  if (!seconds) return '—'
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return `${d}d ${h}h ${m}m`
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
+import { formatBytes, formatDurationLong } from '../utils/format.ts'
 
 function StatCard({ label, value, sub, gradient }: { label: string; value: string; sub?: string; gradient: string }) {
   return (
@@ -103,7 +86,7 @@ export default function Stats() {
         />
         <StatCard
           label="Total Duration"
-          value={formatDuration(stats.totalDuration ?? 0)}
+          value={formatDurationLong(stats.totalDuration ?? 0)}
           sub={stats.totalDuration ? undefined : 'Browse the library to compute'}
           gradient="from-emerald-400 to-teal-300"
         />

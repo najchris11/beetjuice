@@ -4,28 +4,7 @@ import { useAlbum, useAlbumItems, useDeleteAlbum, useDeleteItem } from '../hooks
 import FormatBadge from '../components/FormatBadge.tsx'
 import ConfirmDialog from '../components/ConfirmDialog.tsx'
 import { addToast } from '../hooks/useToast.ts'
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function formatBitrate(bps: number): string {
-  return `${Math.round(bps / 1000)} kbps`
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return '—'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
-}
-
-function formatSamplerate(hz: number): string {
-  return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 ? 1 : 0)} kHz` : `${hz} Hz`
-}
+import { formatBytes, formatBitrate, formatDuration, formatSamplerate } from '../utils/format.ts'
 
 function AlbumArtFallback({ name }: { name: string }) {
   const hash = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
