@@ -17,6 +17,38 @@ router.get('/', async (_req, res) => {
     const albums = albumData.albums ?? albumData
     const items = itemData.items ?? itemData
     const enriched = albums.map(a => enrichAlbum(a, items)) as AlbumSummary[]
+
+    // For albums where beets has no size data, stat the actual files from disk
+    const mp = musicPath()
+    if (mp) {
+      const itemsByAlbum = new Map<number, Item[]>()
+      for (const item of items) {
+        const list = itemsByAlbum.get(item.album_id) ?? []
+        list.push(item)
+        itemsByAlbum.set(item.album_id, list)
+      }
+      await Promise.all(
+        enriched
+          .filter(a => a.totalSize === 0)
+          .map(async album => {
+            const albumItems = itemsByAlbum.get(album.id) ?? []
+            let diskSize = 0
+            await Promise.all(
+              albumItems.map(async item => {
+                if (!item.path) return
+                const resolved = resolvePath(item.path)
+                if (!resolved.startsWith(mp)) return
+                try {
+                  const stat = await fs.stat(resolved)
+                  diskSize += stat.size
+                } catch { /* file not accessible */ }
+              })
+            )
+            if (diskSize > 0) album.totalSize = diskSize
+          })
+      )
+    }
+
     res.json(enriched)
   } catch (err) {
     logger.error(`GET /api/albums: ${String(err)}`)
