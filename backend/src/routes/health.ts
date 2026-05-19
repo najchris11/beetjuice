@@ -2,6 +2,9 @@ import { Router } from 'express'
 import fs from 'node:fs/promises'
 import { musicPath } from '../lib/files.js'
 
+interface BeetsItem { path?: string }
+interface BeetsItemList { items: BeetsItem[] }
+
 interface CheckResult {
   ok: boolean
   label: string
@@ -122,6 +125,46 @@ router.get('/', async (_req, res) => {
           `Confirm PUID/PGID (${puid}/${pgid}) have read access to the share`,
         ],
       }
+    }
+  }
+
+  // 5. Beets path alignment — verify a sample item's path starts with MUSIC_PATH
+  //    Items with empty or misaligned paths mean beets paths config isn't set up
+  if (checks.beetsApi?.ok && mp && checks.musicPath?.ok) {
+    try {
+      const data: BeetsItemList = await fetch(`${beetsUrl}/item/`).then(r => r.json())
+      const sample = data.items?.find(i => i.path)
+      if (!sample?.path) {
+        checks.beetsPathsConfig = {
+          ok: false,
+          label: 'Beets item paths',
+          detail: 'Beets items have no path field — beetjuice cannot locate files for deletion',
+          fix: [
+            'Ensure the beets web plugin is not stripping the path field',
+            'Check that your beets library has been imported with file paths stored (run: beet ls -f $path | head)',
+            'If paths are present in beets but empty here, check the beets web plugin version',
+          ],
+        }
+      } else if (!sample.path.startsWith(mp)) {
+        checks.beetsPathsConfig = {
+          ok: false,
+          label: 'Beets item paths',
+          detail: `Sample item path "${sample.path}" does not start with MUSIC_PATH "${mp}"`,
+          fix: [
+            `Set MUSIC_PATH to match the prefix beets uses for item paths`,
+            `Beets paths start with: "${sample.path.split('/').slice(0, 3).join('/')}"`,
+            `Current MUSIC_PATH: "${mp}" — update it to match the above prefix`,
+          ],
+        }
+      } else {
+        checks.beetsPathsConfig = {
+          ok: true,
+          label: 'Beets item paths',
+          detail: `Item paths align with MUSIC_PATH — deletion will work correctly`,
+        }
+      }
+    } catch {
+      // non-fatal, skip
     }
   }
 

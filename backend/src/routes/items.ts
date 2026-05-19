@@ -1,6 +1,8 @@
 import { Router } from 'express'
+import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete } from '../services/beets.js'
 import { deleteFile, musicPath } from '../lib/files.js'
+import { logger } from '../lib/logger.js'
 import type { Item } from '../types/beets.js'
 
 const router = Router()
@@ -36,23 +38,33 @@ router.delete('/:id', async (req, res) => {
     const item = await beetsGet<Item>(`/item/${itemId}`)
 
     let fileDeleted = false
-    if (musicPath() && item.path) {
-      // 2. Delete the file from filesystem
-      fileDeleted = await deleteFile(item.path)
-      if (!fileDeleted) {
-        console.warn(`DELETE /api/items/${itemId}: file not found on disk: ${item.path}`)
+    const mp = musicPath()
+    if (mp && item.path) {
+      // Safety: refuse to delete anything outside MUSIC_PATH
+      if (!item.path.startsWith(mp)) {
+        logger.warn(`item ${itemId}: path "${item.path}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
+      } else {
+        // Verify the file actually exists before deleting
+        try {
+          await fs.access(item.path, fs.constants.F_OK)
+          fileDeleted = await deleteFile(item.path)
+        } catch {
+          logger.warn(`item ${itemId}: file not found at ${item.path} — removing from DB only`)
+        }
       }
+    } else if (!mp) {
+      logger.warn(`item ${itemId}: MUSIC_PATH not set — skipping file deletion, DB record only`)
     } else {
-      console.warn(`DELETE /api/items/${itemId}: MUSIC_PATH not set — skipping file deletion`)
+      logger.warn(`item ${itemId}: beets returned no path — skipping file deletion, DB record only`)
     }
 
     // 3. Remove from beets DB (no ?delete — we handled the file above)
     await beetsDelete(`/item/${itemId}`, false)
 
-    console.log(`DELETE /api/items/${itemId}: ok (fileDeleted=${fileDeleted})`)
+    logger.info(`deleted item ${itemId} "${item.title}" by ${item.artist} (file=${fileDeleted})`)
     res.json({ ok: true, fileDeleted })
   } catch (err) {
-    console.error(`DELETE /api/items/${itemId} error:`, err)
+    logger.error(`delete item ${itemId} failed: ${String(err)}`)
     res.status(502).json({ error: String(err) })
   }
 })

@@ -1,7 +1,9 @@
 import { Router } from 'express'
+import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
 import { enrichAlbum } from '../lib/duplicates.js'
 import { deleteDir, readArtwork, musicPath } from '../lib/files.js'
+import { logger } from '../lib/logger.js'
 import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
 const router = Router()
@@ -17,7 +19,7 @@ router.get('/', async (_req, res) => {
     const enriched = albums.map(a => enrichAlbum(a, items)) as AlbumSummary[]
     res.json(enriched)
   } catch (err) {
-    console.error('GET /api/albums error:', err)
+    logger.error(`GET /api/albums: ${String(err)}`)
     res.status(502).json({ error: String(err) })
   }
 })
@@ -77,14 +79,24 @@ router.delete('/:id', async (req, res) => {
     const album = await beetsGet<Album>(`/album/${albumId}`)
 
     let filesDeleted = false
-    if (musicPath() && album.path) {
-      // 2a. Delete album directory from filesystem (covers tracks + artwork + any other files)
-      filesDeleted = await deleteDir(album.path)
-      if (!filesDeleted) {
-        console.warn(`DELETE /api/albums/${albumId}: directory not found on disk: ${album.path}`)
+    const mp = musicPath()
+    if (mp && album.path) {
+      // Safety: refuse to delete anything outside MUSIC_PATH
+      if (!album.path.startsWith(mp)) {
+        logger.warn(`album ${albumId}: path "${album.path}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
+      } else {
+        // Verify the directory actually exists before deleting
+        try {
+          await fs.access(album.path, fs.constants.F_OK)
+          filesDeleted = await deleteDir(album.path)
+        } catch {
+          logger.warn(`album ${albumId}: directory not found at ${album.path} — removing from DB only`)
+        }
       }
+    } else if (!mp) {
+      logger.warn(`album ${albumId}: MUSIC_PATH not set — skipping file deletion, DB record only`)
     } else {
-      console.warn(`DELETE /api/albums/${albumId}: MUSIC_PATH not set — skipping file deletion`)
+      logger.warn(`album ${albumId}: beets returned no path — skipping file deletion, DB record only`)
     }
 
     // 3. Remove from beets DB (no ?delete — we handled files above)
@@ -94,10 +106,10 @@ router.delete('/:id', async (req, res) => {
       // Album record may already be gone if beets auto-cleaned after items were removed
     }
 
-    console.log(`DELETE /api/albums/${albumId}: ok (filesDeleted=${filesDeleted})`)
+    logger.info(`deleted album ${albumId} "${album.album}" by ${album.albumartist} (files=${filesDeleted})`)
     res.json({ ok: true, filesDeleted })
   } catch (err) {
-    console.error(`DELETE /api/albums/${albumId}: failed`, err)
+    logger.error(`delete album ${albumId} failed: ${String(err)}`)
     res.status(502).json({ error: `Failed to delete album: ${String(err)}` })
   }
 })

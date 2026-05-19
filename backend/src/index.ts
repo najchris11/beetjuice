@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import express from 'express'
+import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -8,6 +8,7 @@ import itemRoutes from './routes/items.js'
 import duplicateRoutes from './routes/duplicates.js'
 import statsRoutes from './routes/stats.js'
 import healthRoutes from './routes/health.js'
+import { logger } from './lib/logger.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -15,6 +16,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 app.use(cors())
 app.use(express.json())
+
+// Request logger — one line per request with method, path, status, duration
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    const ms = Date.now() - start
+    const msg = `${req.method} ${req.path} ${res.statusCode} ${ms}ms`
+    if (res.statusCode >= 500) logger.error(msg)
+    else if (res.statusCode >= 400) logger.warn(msg)
+    else logger.info(msg)
+  })
+  next()
+})
 
 app.use('/api/albums', albumRoutes)
 app.use('/api/items', itemRoutes)
@@ -29,19 +43,22 @@ app.get('/api/config', (_req, res) => {
   })
 })
 
-// serve compiled frontend in production
+// Serve compiled frontend in production
 const frontendDist = path.join(__dirname, '../../frontend/dist')
 app.use(express.static(frontendDist))
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'))
 })
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('unhandled error:', err)
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error(`unhandled error: ${err.message}`)
   res.status(500).json({ error: err.message })
 })
 
 app.listen(PORT, () => {
-  console.log(`beetjuice listening on http://localhost:${PORT}`)
-  console.log(`beets api → ${process.env.BEETS_API_URL ?? 'http://localhost:8337 (fallback — check .env)'}`)
+  logger.info('beetjuice started')
+  logger.info(`port        ${PORT}`)
+  logger.info(`beets api   ${process.env.BEETS_API_URL ?? '(not set — check BEETS_API_URL)'}`)
+  logger.info(`music path  ${process.env.MUSIC_PATH ?? '(not set — file deletion disabled)'}`)
+  logger.info(`puid/pgid   ${process.env.PUID ?? 99}/${process.env.PGID ?? 100}`)
 })
