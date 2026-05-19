@@ -1,13 +1,78 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+
+interface CheckResult {
+  ok: boolean
+  label: string
+  detail: string
+  fix?: string[]
+}
+
+interface HealthResult {
+  ok: boolean
+  checks: Record<string, CheckResult>
+}
 
 function ConfigItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4 py-3 border-b border-[var(--border-subtle)]/50 last:border-0">
-      <p className="text-sm text-[var(--text-muted)] font-medium">{label}</p>
-      <p className={`text-sm text-[var(--text-secondary)] flex-1 text-right ${mono ? 'font-mono text-xs' : ''}`}>
+      <p className="text-sm text-[var(--text-muted)] font-medium shrink-0">{label}</p>
+      <p className={`text-sm text-[var(--text-secondary)] text-right break-all ${mono ? 'font-mono text-xs' : ''}`}>
         {value}
       </p>
+    </div>
+  )
+}
+
+function CheckRow({ check }: { check: CheckResult }) {
+  const [expanded, setExpanded] = useState(!check.ok)
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 space-y-2 ${
+      check.ok
+        ? 'border-green-500/20 bg-green-500/5'
+        : 'border-red-500/20 bg-red-500/5'
+    }`}>
+      <div className="flex items-start gap-3">
+        {check.ok ? (
+          <svg className="w-4 h-4 text-green-400 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg className="w-4 h-4 text-red-400 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium ${check.ok ? 'text-green-300' : 'text-red-300'}`}>
+            {check.label}
+          </p>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">{check.detail}</p>
+        </div>
+        {!check.ok && check.fix && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="text-xs text-red-400 hover:text-red-300 shrink-0 transition-colors"
+          >
+            {expanded ? 'Hide fix' : 'How to fix'}
+          </button>
+        )}
+      </div>
+
+      {!check.ok && check.fix && expanded && (
+        <div className="ml-7 space-y-1.5 pt-1 border-t border-red-500/15">
+          <p className="text-xs font-medium text-red-300/80 pt-1">Steps to fix:</p>
+          {check.fix.map((step, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="text-xs text-red-400/60 shrink-0 tabular-nums">{i + 1}.</span>
+              <pre className="text-xs text-red-200/70 whitespace-pre-wrap break-all font-mono leading-relaxed">
+                {step}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -18,113 +83,98 @@ export default function Settings() {
     queryFn: () => fetch('/api/config').then(r => r.json()),
   })
 
+  const [diagStatus, setDiagStatus] = useState<'idle' | 'running' | 'done'>('idle')
+  const [health, setHealth] = useState<HealthResult | null>(null)
+
+  const runDiagnostics = async () => {
+    setDiagStatus('running')
+    try {
+      const result: HealthResult = await fetch('/api/health').then(r => r.json())
+      setHealth(result)
+    } finally {
+      setDiagStatus('done')
+    }
+  }
+
+  const checkList = health ? Object.values(health.checks) : []
+
   return (
     <div className="max-w-3xl mx-auto space-y-8 fade-in">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-1">Settings</h1>
-        <p className="text-[var(--text-muted)] text-sm">Read-only configuration</p>
+        <p className="text-[var(--text-muted)] text-sm">Configuration and diagnostics</p>
+      </div>
+
+      {/* Diagnostics */}
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden">
+        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Diagnostics</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Test connectivity to the beets API and verify the music library mount
+            </p>
+          </div>
+
+          {health && (
+            <div className={`flex items-center gap-1.5 text-xs font-medium shrink-0 ${
+              health.ok ? 'text-green-400' : 'text-red-400'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${health.ok ? 'bg-green-400' : 'bg-red-400'}`} />
+              {health.ok ? 'All systems go' : `${checkList.filter(c => !c.ok).length} issue${checkList.filter(c => !c.ok).length !== 1 ? 's' : ''} found`}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 space-y-3">
+          {diagStatus === 'idle' && (
+            <p className="text-sm text-[var(--text-muted)]">
+              Run diagnostics to check that beetjuice can reach the beets API and access your music library.
+            </p>
+          )}
+
+          {checkList.map(check => (
+            <CheckRow key={check.label} check={check} />
+          ))}
+
+          <button
+            onClick={runDiagnostics}
+            disabled={diagStatus === 'running'}
+            className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-purple-500/20"
+          >
+            {diagStatus === 'running' ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round" />
+                </svg>
+                Running…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="12" r="10" />
+                </svg>
+                {diagStatus === 'done' ? 'Run Again' : 'Run Diagnostics'}
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Backend Config */}
       <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden">
         <div className="px-6 py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Backend Configuration</h2>
-          <p className="text-xs text-[var(--text-muted)] mt-1">Beets API connection details</p>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Configuration</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Runtime environment variables</p>
         </div>
         <div className="px-6 py-4 space-y-0">
-          <ConfigItem
-            label="Beets API URL"
-            value={config?.beetsApiUrl ?? '…'}
-            mono
-          />
-          <ConfigItem
-            label="Music Path"
-            value={config?.musicPath ?? '…'}
-            mono
-          />
-          <ConfigItem
-            label="Status"
-            value="Connected"
-          />
-          <ConfigItem
-            label="Protocol"
-            value="HTTP"
-          />
-        </div>
-      </div>
-
-      {/* Environment */}
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden">
-        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Environment</h2>
-          <p className="text-xs text-[var(--text-muted)] mt-1">Application information</p>
-        </div>
-        <div className="px-6 py-4 space-y-0">
-          <ConfigItem
-            label="App Name"
-            value="beetjuice"
-          />
-          <ConfigItem
-            label="Version"
-            value="1.0.0"
-          />
+          <ConfigItem label="Beets API URL" value={config?.beetsApiUrl ?? '…'} mono />
+          <ConfigItem label="Music Path" value={config?.musicPath ?? '…'} mono />
           <ConfigItem
             label="Environment"
             value={import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
           />
-          <ConfigItem
-            label="Build Date"
-            value={new Date().toLocaleDateString()}
-          />
-        </div>
-      </div>
-
-      {/* Features */}
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden">
-        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Features</h2>
-          <p className="text-xs text-[var(--text-muted)] mt-1">Enabled capabilities</p>
-        </div>
-        <div className="px-6 py-4 space-y-0">
-          <ConfigItem
-            label="Library Browsing"
-            value="✓ Enabled"
-          />
-          <ConfigItem
-            label="Duplicate Detection"
-            value="✓ Enabled"
-          />
-          <ConfigItem
-            label="Album Deletion"
-            value="✓ Enabled"
-          />
-          <ConfigItem
-            label="Track Management"
-            value="✓ Enabled"
-          />
-          <ConfigItem
-            label="Cover Art"
-            value="✓ Enabled"
-          />
-        </div>
-      </div>
-
-      {/* Tips */}
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-blue-500/10 p-6 space-y-3">
-        <div className="flex gap-2">
-          <svg className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4M12 8h.01" />
-          </svg>
-          <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium text-blue-300">Tips</p>
-            <ul className="text-xs text-blue-200/80 space-y-1">
-              <li>• Configure <code className="bg-blue-900/40 px-1.5 py-0.5 rounded">BEETS_API_URL</code> environment variable on your server</li>
-              <li>• The Beets web plugin requires <code className="bg-blue-900/40 px-1.5 py-0.5 rounded">readonly: false</code> in your beets config</li>
-              <li>• File deletion works via the Beets CLI command <code className="bg-blue-900/40 px-1.5 py-0.5 rounded">beet remove --delete</code></li>
-            </ul>
-          </div>
         </div>
       </div>
 
@@ -132,22 +182,13 @@ export default function Settings() {
       <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-6">
         <p className="text-sm font-medium text-[var(--text-primary)] mb-3">Quick Navigation</p>
         <div className="flex flex-wrap gap-2">
-          <Link
-            to="/"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-[var(--accent-subtle)] text-purple-300 hover:bg-purple-500/20 transition-all"
-          >
+          <Link to="/" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-[var(--accent-subtle)] text-purple-300 hover:bg-purple-500/20 transition-all">
             Library
           </Link>
-          <Link
-            to="/stats"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.08] transition-all"
-          >
+          <Link to="/stats" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.08] transition-all">
             Statistics
           </Link>
-          <Link
-            to="/duplicates"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.08] transition-all"
-          >
+          <Link to="/duplicates" className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.08] transition-all">
             Duplicates
           </Link>
         </div>

@@ -7,6 +7,7 @@ import albumRoutes from './routes/albums.js'
 import itemRoutes from './routes/items.js'
 import duplicateRoutes from './routes/duplicates.js'
 import statsRoutes from './routes/stats.js'
+import healthRoutes from './routes/health.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -19,6 +20,7 @@ app.use('/api/albums', albumRoutes)
 app.use('/api/items', itemRoutes)
 app.use('/api/duplicates', duplicateRoutes)
 app.use('/api/stats', statsRoutes)
+app.use('/api/health', healthRoutes)
 
 app.get('/api/config', (_req, res) => {
   res.json({
