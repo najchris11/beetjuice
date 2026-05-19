@@ -275,15 +275,15 @@ docker run -e BEETS_API_URL=http://192.168.1.x:8337 -p 3001:3001 beetjuice
 2. ✅ Stats page with detailed library statistics
 3. ✅ Settings panel with read-only config display
 
-### Phase 5 — Library UX + Performance
-1. ☐ Mass delete — checkboxes on every album card in the Library grid; bulk confirm + delete
-2. ☐ Format badge on AlbumCard — small lossless/lossy indicator in the grid
-3. ☐ Format + genre filter chips on Library page — quick "show only FLAC" / genre narrowing
-4. ☐ File size column in AlbumDetail track list
-5. ☐ Delete toast reports actual outcome — "files deleted" vs "DB record only (no files found)"
-6. ☐ Richer Stats page — total library size, total duration, format breakdown (track counts per format)
-7. ☐ Server-side in-memory cache for `GET /api/albums` — 5-min TTL, invalidated on any DELETE
-8. ☐ Dismissible duplicate groups — "Not a duplicate" stored in localStorage, filters on reload
+### Phase 5 — Library UX + Performance ✅
+1. ✅ Mass delete — checkboxes on every album card in the Library grid; bulk confirm + delete
+2. ✅ Format badge on AlbumCard — small lossless/lossy indicator in the grid
+3. ✅ Format + genre filter chips on Library page — quick "show only FLAC" / genre narrowing
+4. ✅ File size column in AlbumDetail track list
+5. ✅ Delete toast reports actual outcome — "files deleted" vs "DB record only (no files found)"
+6. ✅ Richer Stats page — total library size, total duration, format breakdown (track counts per format)
+7. ✅ Server-side in-memory cache for `GET /api/albums` — 5-min TTL, invalidated on any DELETE
+8. ✅ Dismissible duplicate groups — "Not a duplicate" stored in localStorage, filters on reload
 
 ---
 
