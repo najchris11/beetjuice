@@ -54,7 +54,7 @@ export function useStats() {
 export function useDeleteAlbum() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiFetch<{ ok: boolean }>(`/api/albums/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => apiFetch<{ ok: boolean; filesDeleted: boolean }>(`/api/albums/${id}`, { method: 'DELETE' }),
     onMutate: async (deletedId) => {
       // Cancel pending queries
       await qc.cancelQueries({ queryKey: ['albums'] })
@@ -101,10 +101,53 @@ export function useDeleteAlbum() {
   })
 }
 
+export function useBulkDeleteAlbums() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => apiFetch<{ ok: boolean; filesDeleted: boolean }>(`/api/albums/${id}`, { method: 'DELETE' }))
+      )
+      const failures = results.filter(r => r.status === 'rejected')
+      if (failures.length > 0) throw new Error(`${failures.length} of ${ids.length} deletions failed`)
+      return results
+        .filter((r): r is PromiseFulfilledResult<{ ok: boolean; filesDeleted: boolean }> => r.status === 'fulfilled')
+        .map(r => r.value)
+    },
+    onMutate: async (deletedIds) => {
+      await qc.cancelQueries({ queryKey: ['albums'] })
+      await qc.cancelQueries({ queryKey: ['duplicates'] })
+      const prevAlbums = qc.getQueryData<AlbumSummary[]>(['albums'])
+      const prevDuplicates = qc.getQueryData<DuplicateGroup[]>(['duplicates'])
+      const idSet = new Set(deletedIds)
+      if (prevAlbums) {
+        qc.setQueryData<AlbumSummary[]>(['albums'], prevAlbums.filter(a => !idSet.has(a.id)))
+      }
+      if (prevDuplicates) {
+        qc.setQueryData<DuplicateGroup[]>(['duplicates'],
+          prevDuplicates
+            .map(g => ({ ...g, copies: g.copies.filter(c => !idSet.has(c.id)) }))
+            .filter(g => g.copies.length >= 2)
+        )
+      }
+      return { prevAlbums, prevDuplicates }
+    },
+    onError: (_err, _ids, context) => {
+      if (context?.prevAlbums) qc.setQueryData(['albums'], context.prevAlbums)
+      if (context?.prevDuplicates) qc.setQueryData(['duplicates'], context.prevDuplicates)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['albums'] })
+      qc.invalidateQueries({ queryKey: ['duplicates'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
 export function useDeleteItem() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => apiFetch<{ ok: boolean }>(`/api/items/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => apiFetch<{ ok: boolean; fileDeleted: boolean }>(`/api/items/${id}`, { method: 'DELETE' }),
     onMutate: async (deletedId) => {
       // Find which album this item belongs to and optimistically remove it from the items cache
       const allQueries = qc.getQueriesData<Item[]>({ queryKey: ['albums'] })

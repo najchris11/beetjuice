@@ -400,8 +400,11 @@ export default function Duplicates() {
             const albumName = confirm.album
             const artistName = confirm.albumartist
             deleteAlbum.mutate(confirm.id, {
-              onSuccess: () => {
-                addToast('success', 'Album deleted', `"${albumName}" by ${artistName} has been removed.`)
+              onSuccess: (result) => {
+                const detail = result.filesDeleted
+                  ? `"${albumName}" by ${artistName} removed from library and disk.`
+                  : `"${albumName}" by ${artistName} removed from library (no files found on disk).`
+                addToast('success', 'Album deleted', detail)
                 setConfirm(null)
               },
               onError: (err) => {

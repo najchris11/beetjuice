@@ -15,6 +15,14 @@ function formatBitrate(bps: number): string {
   return `${Math.round(bps / 1000)} kbps`
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '—'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+}
+
 function formatSamplerate(hz: number): string {
   return hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 ? 1 : 0)} kHz` : `${hz} Hz`
 }
@@ -150,6 +158,7 @@ export default function AlbumDetail() {
               <th className="text-left px-4 py-3 w-24">Bitrate</th>
               <th className="text-left px-4 py-3 w-24">Sample</th>
               <th className="text-left px-4 py-3 w-20">Duration</th>
+              <th className="text-left px-4 py-3 w-20">Size</th>
               <th className="px-4 py-3 w-16" />
             </tr>
           </thead>
@@ -165,6 +174,7 @@ export default function AlbumDetail() {
                   {item.bitdepth > 0 && <span className="text-[var(--text-muted)]/60 ml-1">/ {item.bitdepth}bit</span>}
                 </td>
                 <td className="px-4 py-3 text-[var(--text-muted)] tabular-nums">{formatDuration(item.length)}</td>
+                <td className="px-4 py-3 text-[var(--text-muted)] tabular-nums font-mono text-xs">{formatBytes(item.size)}</td>
                 <td className="px-4 py-3">
                   <button
                     onClick={() => setConfirmItem(item.id)}
@@ -186,8 +196,11 @@ export default function AlbumDetail() {
           description={`Permanently delete "${album.album}" by ${album.albumartist} and all its files? This cannot be undone.`}
           onConfirm={() => {
             deleteAlbum.mutate(album.id, {
-              onSuccess: () => {
-                addToast('success', 'Album deleted', `"${album.album}" by ${album.albumartist} has been removed.`)
+              onSuccess: (result) => {
+                const detail = result.filesDeleted
+                  ? `"${album.album}" by ${album.albumartist} removed from library and disk.`
+                  : `"${album.album}" by ${album.albumartist} removed from library (no files found on disk).`
+                addToast('success', 'Album deleted', detail)
                 navigate('/')
               },
               onError: (err) => {
@@ -208,8 +221,11 @@ export default function AlbumDetail() {
           description={`Permanently delete "${confirmItemData.title}" and its file? This cannot be undone.`}
           onConfirm={() => {
             deleteItem.mutate(confirmItem, {
-              onSuccess: () => {
-                addToast('success', 'Track deleted', `"${confirmItemData.title}" has been removed.`)
+              onSuccess: (result) => {
+                const detail = result.fileDeleted
+                  ? `"${confirmItemData.title}" removed from library and disk.`
+                  : `"${confirmItemData.title}" removed from library (no file found on disk).`
+                addToast('success', 'Track deleted', detail)
                 setConfirmItem(null)
               },
               onError: (err) => {

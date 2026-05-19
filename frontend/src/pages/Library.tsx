@@ -1,7 +1,9 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useAlbums } from '../hooks/useBeets.ts'
+import { useAlbums, useBulkDeleteAlbums } from '../hooks/useBeets.ts'
 import type { AlbumSummary } from '../types/beets.ts'
 import AlbumCard from '../components/AlbumCard.tsx'
+import ConfirmDialog from '../components/ConfirmDialog.tsx'
+import { addToast } from '../hooks/useToast.ts'
 
 type SortKey = 'artist' | 'album' | 'year-desc' | 'year-asc' | 'size-desc' | 'size-asc'
 
@@ -14,10 +16,34 @@ const sortLabels: Record<SortKey, string> = {
   'size-asc': 'Size ↑',
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
+}
+
 export default function Library() {
   const { data: albums, isLoading, error } = useAlbums()
+  const bulkDelete = useBulkDeleteAlbums()
+
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('artist')
+  const [formatFilter, setFormatFilter] = useState<string | null>(null)
+  const [genreFilter, setGenreFilter] = useState<string | null>(null)
+
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
+
+  // Derive available format and genre options from loaded data
+  const { formats, genres } = useMemo(() => {
+    if (!albums) return { formats: [], genres: [] }
+    const fmts = [...new Set(albums.flatMap(a => a.formats))].sort()
+    const gnrs = [...new Set(albums.map(a => a.genre).filter(Boolean))].sort()
+    return { formats: fmts, genres: gnrs }
+  }, [albums])
 
   const filtered = useMemo(() => {
     if (!albums) return []
@@ -32,7 +58,12 @@ export default function Library() {
           a.genre?.toLowerCase().includes(q),
       )
     }
-    // Sort
+    if (formatFilter) {
+      result = result.filter(a => a.formats.includes(formatFilter))
+    }
+    if (genreFilter) {
+      result = result.filter(a => a.genre === genreFilter)
+    }
     return [...result].sort((a, b) => {
       switch (sortBy) {
         case 'artist':
@@ -51,7 +82,52 @@ export default function Library() {
           return 0
       }
     })
-  }, [albums, search, sortBy])
+  }, [albums, search, sortBy, formatFilter, genreFilter])
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const enterSelectMode = () => {
+    setSelectMode(true)
+    setSelected(new Set())
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  const selectAll = () => {
+    setSelected(new Set(filtered.map(a => a.id)))
+  }
+
+  const selectedAlbums = useMemo(
+    () => (albums ?? []).filter(a => selected.has(a.id)),
+    [albums, selected],
+  )
+
+  const totalSelectedSize = selectedAlbums.reduce((s, a) => s + a.totalSize, 0)
+
+  const handleBulkDelete = () => {
+    const ids = [...selected]
+    bulkDelete.mutate(ids, {
+      onSuccess: () => {
+        addToast('success', `Deleted ${ids.length} album${ids.length !== 1 ? 's' : ''}`, '')
+        exitSelectMode()
+        setConfirmBulk(false)
+      },
+      onError: err => {
+        addToast('error', 'Bulk delete failed', String(err))
+        setConfirmBulk(false)
+      },
+    })
+  }
 
   if (isLoading) {
     return (
@@ -78,8 +154,8 @@ export default function Library() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 fade-in">
-      {/* Search & Controls */}
+    <div className="max-w-7xl mx-auto space-y-4 fade-in">
+      {/* Search & Sort row */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -105,7 +181,7 @@ export default function Library() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {(Object.keys(sortLabels) as SortKey[]).map(key => (
             <button
               key={key}
@@ -121,10 +197,94 @@ export default function Library() {
           ))}
         </div>
 
-        <span className="text-xs text-[var(--text-muted)] ml-auto tabular-nums">
-          {filtered.length.toLocaleString()} album{filtered.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs text-[var(--text-muted)] tabular-nums">
+            {filtered.length.toLocaleString()} album{filtered.length !== 1 ? 's' : ''}
+          </span>
+          {!selectMode ? (
+            <button
+              onClick={enterSelectMode}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.06] border border-[var(--border-subtle)] transition-all"
+            >
+              Select
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={selectAll}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.06] transition-all"
+              >
+                All
+              </button>
+              <button
+                onClick={exitSelectMode}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.06] border border-[var(--border-subtle)] transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Format + Genre filter chips */}
+      {(formats.length > 0 || genres.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {formats.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-[var(--text-muted)] font-medium shrink-0">Format</span>
+              {formats.map(fmt => (
+                <button
+                  key={fmt}
+                  onClick={() => setFormatFilter(f => f === fmt ? null : fmt)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all border ${
+                    formatFilter === fmt
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      : 'text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {formats.length > 0 && genres.length > 0 && (
+            <div className="w-px h-4 bg-[var(--border-subtle)]" />
+          )}
+
+          {genres.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-[var(--text-muted)] font-medium shrink-0">Genre</span>
+              {genres.slice(0, 12).map(genre => (
+                <button
+                  key={genre}
+                  onClick={() => setGenreFilter(g => g === genre ? null : genre)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all border ${
+                    genreFilter === genre
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      : 'text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-secondary)] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {genre}
+                </button>
+              ))}
+              {genres.length > 12 && (
+                <span className="text-xs text-[var(--text-muted)]/60">+{genres.length - 12} more</span>
+              )}
+            </div>
+          )}
+
+          {(formatFilter || genreFilter) && (
+            <button
+              onClick={() => { setFormatFilter(null); setGenreFilter(null) }}
+              className="text-xs text-purple-400 hover:text-purple-300 transition-colors ml-1"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Album Grid */}
       {filtered.length === 0 ? (
@@ -141,9 +301,44 @@ export default function Library() {
               key={album.id}
               album={album}
               style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
+              selectMode={selectMode}
+              selected={selected.has(album.id)}
+              onSelect={toggleSelect}
             />
           ))}
         </div>
+      )}
+
+      {/* Floating bulk action bar */}
+      {selectMode && selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-2xl shadow-black/40 backdrop-blur-sm">
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {selected.size} album{selected.size !== 1 ? 's' : ''} selected
+          </span>
+          {totalSelectedSize > 0 && (
+            <span className="text-xs text-[var(--text-muted)]">
+              · {formatBytes(totalSelectedSize)}
+            </span>
+          )}
+          <div className="w-px h-4 bg-[var(--border-subtle)]" />
+          <button
+            onClick={() => setConfirmBulk(true)}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 hover:text-red-300 border border-red-500/20 transition-all"
+          >
+            Delete {selected.size}
+          </button>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation */}
+      {confirmBulk && (
+        <ConfirmDialog
+          title={`Delete ${selected.size} album${selected.size !== 1 ? 's' : ''}?`}
+          description={`Permanently delete ${selected.size} album${selected.size !== 1 ? 's' : ''} and all their files?${totalSelectedSize > 0 ? ` (~${formatBytes(totalSelectedSize)} on disk)` : ''}\n\n${selectedAlbums.slice(0, 5).map(a => `• ${a.albumartist} — ${a.album}`).join('\n')}${selectedAlbums.length > 5 ? `\n• …and ${selectedAlbums.length - 5} more` : ''}\n\nThis cannot be undone.`}
+          onConfirm={handleBulkDelete}
+          onCancel={() => setConfirmBulk(false)}
+          loading={bulkDelete.isPending}
+        />
       )}
     </div>
   )
