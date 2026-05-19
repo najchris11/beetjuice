@@ -20,6 +20,13 @@ app.use('/api/items', itemRoutes)
 app.use('/api/duplicates', duplicateRoutes)
 app.use('/api/stats', statsRoutes)
 
+app.get('/api/config', (_req, res) => {
+  res.json({
+    beetsApiUrl: process.env.BEETS_API_URL ?? '(not set)',
+    musicPath: process.env.MUSIC_PATH ?? '(not set)',
+  })
+})
+
 // serve compiled frontend in production
 const frontendDist = path.join(__dirname, '../../frontend/dist')
 app.use(express.static(frontendDist))

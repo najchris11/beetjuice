@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
 function ConfigItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -12,7 +13,10 @@ function ConfigItem({ label, value, mono = false }: { label: string; value: stri
 }
 
 export default function Settings() {
-  const beetsApiUrl = import.meta.env.VITE_BEETS_API_URL || 'http://localhost:8337'
+  const { data: config } = useQuery<{ beetsApiUrl: string; musicPath: string }>({
+    queryKey: ['config'],
+    queryFn: () => fetch('/api/config').then(r => r.json()),
+  })
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 fade-in">
@@ -31,7 +35,12 @@ export default function Settings() {
         <div className="px-6 py-4 space-y-0">
           <ConfigItem
             label="Beets API URL"
-            value={beetsApiUrl}
+            value={config?.beetsApiUrl ?? '…'}
+            mono
+          />
+          <ConfigItem
+            label="Music Path"
+            value={config?.musicPath ?? '…'}
             mono
           />
           <ConfigItem
