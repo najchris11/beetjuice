@@ -36,6 +36,30 @@ export default function Nav() {
           >
             Duplicates
           </NavLink>
+          <NavLink
+            to="/stats"
+            className={({ isActive }) =>
+              `px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                isActive
+                  ? 'bg-[var(--accent-subtle)] text-purple-300'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.04]'
+              }`
+            }
+          >
+            Stats
+          </NavLink>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              `px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                isActive
+                  ? 'bg-[var(--accent-subtle)] text-purple-300'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.04]'
+              }`
+            }
+          >
+            Settings
+          </NavLink>
         </div>
         {stats && (
           <div className="ml-auto flex items-center gap-3 text-xs text-[var(--text-muted)]">

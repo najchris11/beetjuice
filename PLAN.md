@@ -262,10 +262,10 @@ docker run -e BEETS_API_URL=http://192.168.1.x:8337 -p 3001:3001 beetjuice
 4. ✅ Optimistic UI update (instant removal from cache, rollback on failure)
 5. ✅ Toast notifications for success/error feedback
 
-### Phase 4 — Polish
-1. Loading skeletons, error states
-2. Stats page
-3. Settings panel (read-only config display)
+### Phase 4 — Polish ✅
+1. ✅ Loading skeletons, error states (Duplicates page + new pages)
+2. ✅ Stats page with detailed library statistics
+3. ✅ Settings panel with read-only config display
 
 ---
 

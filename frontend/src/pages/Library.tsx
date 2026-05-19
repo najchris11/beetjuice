@@ -1,14 +1,17 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAlbums } from '../hooks/useBeets.ts'
+import type { AlbumSummary } from '../types/beets.ts'
 import AlbumCard from '../components/AlbumCard.tsx'
 
-type SortKey = 'artist' | 'album' | 'year-desc' | 'year-asc'
+type SortKey = 'artist' | 'album' | 'year-desc' | 'year-asc' | 'size-desc' | 'size-asc'
 
 const sortLabels: Record<SortKey, string> = {
   artist: 'Artist',
   album: 'Album',
   'year-desc': 'Year ↓',
   'year-asc': 'Year ↑',
+  'size-desc': 'Size ↓',
+  'size-asc': 'Size ↑',
 }
 
 export default function Library() {
@@ -40,6 +43,10 @@ export default function Library() {
           return (b.year || 0) - (a.year || 0) || a.albumartist.localeCompare(b.albumartist)
         case 'year-asc':
           return (a.year || 0) - (b.year || 0) || a.albumartist.localeCompare(b.albumartist)
+        case 'size-desc':
+          return (b.totalSize || 0) - (a.totalSize || 0) || a.albumartist.localeCompare(b.albumartist)
+        case 'size-asc':
+          return (a.totalSize || 0) - (b.totalSize || 0) || a.albumartist.localeCompare(b.albumartist)
         default:
           return 0
       }

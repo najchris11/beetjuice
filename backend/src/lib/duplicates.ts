@@ -35,6 +35,7 @@ export function enrichAlbum(album: Album, items: Item[]): AlbumSummary {
     : 0
   const maxSamplerate = albumItems.reduce((max, i) => Math.max(max, i.samplerate ?? 0), 0)
   const maxBitdepth = albumItems.reduce((max, i) => Math.max(max, i.bitdepth ?? 0), 0)
+  const totalSize = albumItems.reduce((sum, i) => sum + (i.size ?? 0), 0)
 
   return {
     ...album,
@@ -45,6 +46,7 @@ export function enrichAlbum(album: Album, items: Item[]): AlbumSummary {
     maxSamplerate,
     maxBitdepth,
     formats,
+    totalSize,
   }
 }
 

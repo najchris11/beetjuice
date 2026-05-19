@@ -29,6 +29,7 @@ export interface Item {
   samplerate: number
   bitdepth: number
   length: number
+  size: number                // bytes
   path: string
   mb_trackid: string
   mb_albumid: string
@@ -42,6 +43,7 @@ export interface AlbumSummary extends Album {
   maxSamplerate: number        // Hz
   maxBitdepth: number
   formats: string[]            // unique formats in this album
+  totalSize: number            // bytes
 }
 
 export interface DuplicateGroup {

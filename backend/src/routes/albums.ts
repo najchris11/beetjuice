@@ -1,13 +1,20 @@
 import { Router } from 'express'
 import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
-import type { Album, Item } from '../types/beets.js'
+import { enrichAlbum } from '../lib/duplicates.js'
+import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
 const router = Router()
 
 router.get('/', async (_req, res) => {
   try {
-    const data = await beetsGet<{ albums: Album[] }>('/album/')
-    res.json(data.albums ?? data)
+    const [albumData, itemData] = await Promise.all([
+      beetsGet<{ albums: Album[] }>('/album/'),
+      beetsGet<{ items: Item[] }>('/item/'),
+    ])
+    const albums = albumData.albums ?? albumData
+    const items = itemData.items ?? itemData
+    const enriched = albums.map(a => enrichAlbum(a, items)) as AlbumSummary[]
+    res.json(enriched)
   } catch (err) {
     console.error('GET /api/albums error:', err)
     res.status(502).json({ error: String(err) })
@@ -47,48 +54,41 @@ router.get('/:id/items', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const albumId = req.params.id
   try {
-    // First, try the direct album delete with ?delete (removes DB + files)
-    await beetsDelete(`/album/${albumId}`, true)
-    console.log(`DELETE /api/albums/${albumId}: album deleted via direct DELETE`)
-    res.json({ ok: true, method: 'direct' })
-  } catch (directErr) {
-    // Fallback: delete each item individually, then remove the album record
-    console.warn(`DELETE /api/albums/${albumId}: direct album delete failed, trying item-by-item fallback...`, directErr)
-    try {
-      const data = await beetsGet<{ results: Item[] }>(`/item/query/album_id:${albumId}`)
-      const items = data.results ?? []
+    // Workaround: beets Album.remove(delete=True) has a bug where it deletes
+    // the album DB row before iterating items, causing self.items() to return
+    // empty and skipping file deletion entirely. Instead, we delete each item
+    // individually (which correctly removes files), then clean up the album record.
+    // See: https://github.com/beetbox/beets/issues/XXXX
 
-      // Delete each item (with file deletion)
-      const itemResults = await Promise.allSettled(
-        items.map(item => beetsDelete(`/item/${item.id}`, true))
-      )
-      const failedItems = itemResults.filter(r => r.status === 'rejected')
-      if (failedItems.length > 0) {
-        console.warn(`DELETE /api/albums/${albumId}: ${failedItems.length}/${items.length} item deletes failed`)
-      }
+    // 1. Get all items for this album
+    const data = await beetsGet<{ results: Item[] }>(`/item/query/album_id:${albumId}`)
+    const items = data.results ?? []
 
-      // Now delete the album record itself (without ?delete since files are already gone)
-      try {
-        await beetsDelete(`/album/${albumId}`, false)
-      } catch {
-        // Album record might already be gone if beets auto-cleaned it
-        console.warn(`DELETE /api/albums/${albumId}: album record cleanup failed (may already be removed)`)
-      }
-
-      console.log(`DELETE /api/albums/${albumId}: album deleted via fallback (${items.length - failedItems.length}/${items.length} items removed)`)
-      res.json({
-        ok: true,
-        method: 'fallback',
-        itemsDeleted: items.length - failedItems.length,
-        itemsFailed: failedItems.length,
-      })
-    } catch (fallbackErr) {
-      console.error(`DELETE /api/albums/${albumId}: both direct and fallback delete failed`, fallbackErr)
-      res.status(502).json({
-        error: `Failed to delete album: ${String(fallbackErr)}`,
-        directError: String(directErr),
-      })
+    // 2. Delete each item with ?delete (removes DB record + file from disk)
+    const itemResults = await Promise.allSettled(
+      items.map(item => beetsDelete(`/item/${item.id}`, true))
+    )
+    const failedItems = itemResults.filter(r => r.status === 'rejected')
+    if (failedItems.length > 0) {
+      console.warn(`DELETE /api/albums/${albumId}: ${failedItems.length}/${items.length} item deletes failed`)
     }
+
+    // 3. Clean up the album record (no ?delete needed — files already handled)
+    try {
+      await beetsDelete(`/album/${albumId}`, false)
+    } catch {
+      // Album record might already be gone if beets auto-cleaned it after last item was removed
+    }
+
+    console.log(`DELETE /api/albums/${albumId}: deleted ${items.length - failedItems.length}/${items.length} items`)
+    res.json({
+      ok: true,
+      itemsDeleted: items.length - failedItems.length,
+      itemsFailed: failedItems.length,
+    })
+  } catch (err) {
+    console.error(`DELETE /api/albums/${albumId}: failed`, err)
+    res.status(502).json({ error: `Failed to delete album: ${String(err)}` })
   }
 })
 

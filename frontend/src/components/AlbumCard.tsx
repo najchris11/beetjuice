@@ -1,9 +1,17 @@
 import { Link } from 'react-router-dom'
-import type { Album } from '../types/beets.ts'
+import type { AlbumSummary } from '../types/beets.ts'
 
 interface Props {
-  album: Album
+  album: AlbumSummary
   style?: React.CSSProperties
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
 function AlbumArtFallback({ name }: { name: string }) {
@@ -56,9 +64,16 @@ export default function AlbumCard({ album, style }: Props) {
           {album.album}
         </p>
         <p className="text-xs text-[var(--text-muted)] truncate">{album.albumartist}</p>
-        {album.year > 0 && (
-          <p className="text-xs text-[var(--text-muted)]/60">{album.year}</p>
-        )}
+        <div className="flex items-center gap-2">
+          {album.year > 0 && (
+            <p className="text-xs text-[var(--text-muted)]/60">{album.year}</p>
+          )}
+          {album.totalSize > 0 && (
+            <p className="text-xs text-[var(--text-muted)]/60">
+              {formatBytes(album.totalSize)}
+            </p>
+          )}
+        </div>
       </div>
     </Link>
   )

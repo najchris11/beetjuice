@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Album, Item, DuplicateGroup, Stats } from '../types/beets.ts'
+import type { Album, AlbumSummary, Item, DuplicateGroup, Stats } from '../types/beets.ts'
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options)
@@ -17,7 +17,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function useAlbums() {
-  return useQuery<Album[]>({
+  return useQuery<AlbumSummary[]>({
     queryKey: ['albums'],
     queryFn: () => apiFetch('/api/albums'),
   })
@@ -61,12 +61,12 @@ export function useDeleteAlbum() {
       await qc.cancelQueries({ queryKey: ['duplicates'] })
 
       // Snapshot current state for rollback
-      const prevAlbums = qc.getQueryData<Album[]>(['albums'])
+      const prevAlbums = qc.getQueryData<AlbumSummary[]>(['albums'])
       const prevDuplicates = qc.getQueryData<DuplicateGroup[]>(['duplicates'])
 
       // Optimistic update: remove the album from the cache
       if (prevAlbums) {
-        qc.setQueryData<Album[]>(['albums'], prevAlbums.filter(a => a.id !== deletedId))
+        qc.setQueryData<AlbumSummary[]>(['albums'], prevAlbums.filter(a => a.id !== deletedId))
       }
 
       // Optimistic update: remove album from duplicate groups
