@@ -2,7 +2,7 @@ import { Router } from 'express'
 import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
 import { enrichAlbum } from '../lib/duplicates.js'
-import { deleteDir, readArtwork, musicPath, resolvePath } from '../lib/files.js'
+import { deleteDir, deleteFile, readArtwork, musicPath, resolvePath } from '../lib/files.js'
 import { logger } from '../lib/logger.js'
 import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
@@ -75,36 +75,76 @@ router.get('/:id/items', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const albumId = req.params.id
   try {
-    // 1. Get the album to retrieve its directory path
     const album = await beetsGet<Album>(`/album/${albumId}`)
 
     let filesDeleted = false
     const mp = musicPath()
-    if (mp && album.path) {
+
+    if (!mp) {
+      logger.warn(`album ${albumId}: MUSIC_PATH not set — skipping file deletion, DB record only`)
+    } else if (album.path) {
+      // Happy path: album has a directory path — delete the whole directory at once
       const resolvedPath = resolvePath(album.path)
-      // Safety: refuse to delete anything outside MUSIC_PATH
       if (!resolvedPath.startsWith(mp)) {
         logger.warn(`album ${albumId}: resolved path "${resolvedPath}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
       } else {
-        // Verify the directory actually exists before deleting
         try {
           await fs.access(resolvedPath, fs.constants.F_OK)
           filesDeleted = await deleteDir(resolvedPath)
         } catch {
-          logger.warn(`album ${albumId}: directory not found at ${resolvedPath} — removing from DB only`)
+          logger.warn(`album ${albumId}: directory not found at ${resolvedPath} — falling back to item-by-item deletion`)
         }
       }
-    } else if (!mp) {
-      logger.warn(`album ${albumId}: MUSIC_PATH not set — skipping file deletion, DB record only`)
-    } else {
-      logger.warn(`album ${albumId}: beets returned no path — skipping file deletion, DB record only`)
     }
 
-    // 3. Remove from beets DB (no ?delete — we handled files above)
+    // Fallback: album had no path, or its directory didn't exist — delete files item by item
+    if (!filesDeleted && mp) {
+      const itemData = await beetsGet<{ results: Item[] }>(`/item/query/album_id:${albumId}`)
+      const items = itemData.results ?? []
+      if (items.length === 0) {
+        logger.warn(`album ${albumId}: beets returned no path and no items — DB record only`)
+      } else {
+        logger.info(`album ${albumId}: no album path — deleting ${items.length} item file(s) individually`)
+        let dirToRemove: string | undefined
+        let deletedCount = 0
+        for (const item of items) {
+          if (!item.path) continue
+          const resolvedPath = resolvePath(item.path)
+          if (!resolvedPath.startsWith(mp)) {
+            logger.warn(`album ${albumId} item ${item.id}: path outside MUSIC_PATH — skipping`)
+            continue
+          }
+          try {
+            await fs.access(resolvedPath, fs.constants.F_OK)
+            const deleted = await deleteFile(resolvedPath)
+            if (deleted) {
+              deletedCount++
+              // Track parent dir so we can clean it up after
+              dirToRemove ??= resolvedPath.substring(0, resolvedPath.lastIndexOf('/'))
+            }
+          } catch {
+            logger.warn(`album ${albumId} item ${item.id}: file not found at ${resolvedPath}`)
+          }
+        }
+        // Remove the (now-empty) album directory if all files came from the same dir
+        if (dirToRemove && dirToRemove.startsWith(mp)) {
+          try {
+            await fs.rmdir(dirToRemove)
+            logger.info(`album ${albumId}: removed empty directory ${dirToRemove}`)
+          } catch {
+            // Non-empty or already gone — not an error
+          }
+        }
+        filesDeleted = deletedCount > 0
+        logger.info(`album ${albumId}: deleted ${deletedCount}/${items.length} item files`)
+      }
+    }
+
+    // Remove from beets DB (no ?delete — we handled files above)
     try {
       await beetsDelete(`/album/${albumId}`, false)
     } catch {
-      // Album record may already be gone if beets auto-cleaned after items were removed
+      // Album record may already be gone
     }
 
     logger.info(`deleted album ${albumId} "${album.album}" by ${album.albumartist} (files=${filesDeleted})`)
