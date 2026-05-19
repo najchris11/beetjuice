@@ -78,7 +78,7 @@ function CheckRow({ check }: { check: CheckResult }) {
 }
 
 export default function Settings() {
-  const { data: config } = useQuery<{ beetsApiUrl: string; musicPath: string }>({
+  const { data: config } = useQuery<{ beetsApiUrl: string; musicPath: string; beetsLibraryPath: string }>({
     queryKey: ['config'],
     queryFn: () => fetch('/api/config').then(r => r.json()),
   })
@@ -171,6 +171,7 @@ export default function Settings() {
         <div className="px-6 py-4 space-y-0">
           <ConfigItem label="Beets API URL" value={config?.beetsApiUrl ?? '…'} mono />
           <ConfigItem label="Music Path" value={config?.musicPath ?? '…'} mono />
+          <ConfigItem label="Beets Library Path" value={config?.beetsLibraryPath ?? '…'} mono />
           <ConfigItem
             label="Environment"
             value={import.meta.env.MODE === 'production' ? 'Production' : 'Development'}

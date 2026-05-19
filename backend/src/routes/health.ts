@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import fs from 'node:fs/promises'
-import { musicPath } from '../lib/files.js'
+import { musicPath, libraryPath, resolvePath } from '../lib/files.js'
 
 interface BeetsItem { path?: string }
 interface BeetsItemList { items: BeetsItem[] }
@@ -128,8 +128,7 @@ router.get('/', async (_req, res) => {
     }
   }
 
-  // 5. Beets path alignment — verify a sample item's path starts with MUSIC_PATH
-  //    Items with empty or misaligned paths mean beets paths config isn't set up
+  // 5. Beets path alignment — resolve a sample item path and confirm the file exists on disk
   if (checks.beetsApi?.ok && mp && checks.musicPath?.ok) {
     try {
       const data: BeetsItemList = await fetch(`${beetsUrl}/item/`).then(r => r.json())
@@ -141,26 +140,54 @@ router.get('/', async (_req, res) => {
           detail: 'Beets items have no path field — beetjuice cannot locate files for deletion',
           fix: [
             'Ensure the beets web plugin is not stripping the path field',
-            'Check that your beets library has been imported with file paths stored (run: beet ls -f $path | head)',
-            'If paths are present in beets but empty here, check the beets web plugin version',
-          ],
-        }
-      } else if (!sample.path.startsWith(mp)) {
-        checks.beetsPathsConfig = {
-          ok: false,
-          label: 'Beets item paths',
-          detail: `Sample item path "${sample.path}" does not start with MUSIC_PATH "${mp}"`,
-          fix: [
-            `Set MUSIC_PATH to match the prefix beets uses for item paths`,
-            `Beets paths start with: "${sample.path.split('/').slice(0, 3).join('/')}"`,
-            `Current MUSIC_PATH: "${mp}" — update it to match the above prefix`,
+            'Check that your beets library has been imported with file paths stored',
           ],
         }
       } else {
-        checks.beetsPathsConfig = {
-          ok: true,
-          label: 'Beets item paths',
-          detail: `Item paths align with MUSIC_PATH — deletion will work correctly`,
+        const lib = libraryPath()
+        const resolved = resolvePath(sample.path)
+        const isRelative = !sample.path.startsWith('/')
+        const outsideMusicPath = !resolved.startsWith(mp)
+
+        if (outsideMusicPath) {
+          checks.beetsPathsConfig = {
+            ok: false,
+            label: 'Beets item paths',
+            detail: isRelative
+              ? `Beets returns relative paths (e.g. "${sample.path}") — BEETS_LIBRARY_PATH must be set to the library root`
+              : `Resolved path "${resolved}" is outside MUSIC_PATH "${mp}"`,
+            fix: isRelative ? [
+              `Set BEETS_LIBRARY_PATH to your beets library root inside this container`,
+              `Example: if your music is mounted at /music and beets uses the "clean" subfolder, set BEETS_LIBRARY_PATH=/music/clean`,
+              `Current MUSIC_PATH: "${mp}", current BEETS_LIBRARY_PATH: "${lib || '(not set)'}"`,
+              `Sample beets path: "${sample.path}" → should resolve to ${mp}/.../${sample.path}`,
+            ] : [
+              `Beets paths start with a different prefix than MUSIC_PATH`,
+              `MUSIC_PATH: "${mp}", resolved path: "${resolved}"`,
+              `Update MUSIC_PATH to match the mount point of your beets library`,
+            ],
+          }
+        } else {
+          // Resolved path is within MUSIC_PATH — now confirm the file actually exists
+          try {
+            await fs.access(resolved, fs.constants.F_OK)
+            checks.beetsPathsConfig = {
+              ok: true,
+              label: 'Beets item paths',
+              detail: `Paths resolve correctly and files are reachable on disk${isRelative ? ` (relative via BEETS_LIBRARY_PATH="${lib}")` : ''}`,
+            }
+          } catch {
+            checks.beetsPathsConfig = {
+              ok: false,
+              label: 'Beets item paths',
+              detail: `Resolved path "${resolved}" is within MUSIC_PATH but file not found on disk`,
+              fix: [
+                `The resolved path looks right but the file doesn't exist — check that your music volume is mounted correctly`,
+                `Beets path: "${sample.path}" → resolved: "${resolved}"`,
+                `Confirm the same share is mounted in both containers at the same path`,
+              ],
+            }
+          }
         }
       }
     } catch {

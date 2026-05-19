@@ -2,7 +2,7 @@ import { Router } from 'express'
 import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
 import { enrichAlbum } from '../lib/duplicates.js'
-import { deleteDir, readArtwork, musicPath } from '../lib/files.js'
+import { deleteDir, readArtwork, musicPath, resolvePath } from '../lib/files.js'
 import { logger } from '../lib/logger.js'
 import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
@@ -81,16 +81,17 @@ router.delete('/:id', async (req, res) => {
     let filesDeleted = false
     const mp = musicPath()
     if (mp && album.path) {
+      const resolvedPath = resolvePath(album.path)
       // Safety: refuse to delete anything outside MUSIC_PATH
-      if (!album.path.startsWith(mp)) {
-        logger.warn(`album ${albumId}: path "${album.path}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
+      if (!resolvedPath.startsWith(mp)) {
+        logger.warn(`album ${albumId}: resolved path "${resolvedPath}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
       } else {
         // Verify the directory actually exists before deleting
         try {
-          await fs.access(album.path, fs.constants.F_OK)
-          filesDeleted = await deleteDir(album.path)
+          await fs.access(resolvedPath, fs.constants.F_OK)
+          filesDeleted = await deleteDir(resolvedPath)
         } catch {
-          logger.warn(`album ${albumId}: directory not found at ${album.path} — removing from DB only`)
+          logger.warn(`album ${albumId}: directory not found at ${resolvedPath} — removing from DB only`)
         }
       }
     } else if (!mp) {

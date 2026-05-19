@@ -34,8 +34,11 @@ COPY --from=build /app/frontend/dist ./frontend/dist
 ENV PORT=3001
 ENV PUID=99
 ENV PGID=100
-# Set to the internal mount path of your music library (same path as your beets container uses)
+# Mount point for the music share (used as the safety boundary for file deletions)
 ENV MUSIC_PATH=/music
+# Root of the beets library inside the container. Set if beets returns relative paths
+# or uses a subdirectory of MUSIC_PATH (e.g. /music/clean). Defaults to MUSIC_PATH if unset.
+ENV BEETS_LIBRARY_PATH=
 
 EXPOSE 3001
 

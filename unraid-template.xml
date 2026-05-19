@@ -40,11 +40,22 @@
     Target="MUSIC_PATH"
     Default="/music"
     Mode=""
-    Description="Internal container path where your music library is mounted. Must match the path your beets container uses for the same share so file paths align."
+    Description="Internal container path where your music share is mounted. Used as the safety boundary — beetjuice will never delete files outside this path."
     Type="Variable"
     Display="always"
     Required="true"
     Mask="false">/music</Config>
+
+  <Config
+    Name="Beets Library Path"
+    Target="BEETS_LIBRARY_PATH"
+    Default=""
+    Mode=""
+    Description="Root of your beets library inside the container. Set this if beets returns relative paths or uses a subdirectory of your music share (e.g. /music/clean). Leave blank if beets returns absolute paths that already start with MUSIC_PATH."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"></Config>
 
   <!-- Volume mounts -->
   <Config

@@ -85,13 +85,14 @@ No Docker socket, no SSH, no volume mounts required.
 
 **Environment variables:**
 
-| Variable        | Default      | Description                                                       |
-|-----------------|--------------|-------------------------------------------------------------------|
-| `BEETS_API_URL` | *(required)* | e.g. `http://beets:8337` (use container name if on same network)  |
-| `MUSIC_PATH`    | `/music`     | Internal path where music library is mounted (must match beets)   |
-| `PORT`          | `3001`       | Port beetjuice listens on                                         |
-| `PUID`          | `99`         | UID (Unraid nobody)                                               |
-| `PGID`          | `100`        | GID (Unraid users)                                                |
+| Variable              | Default      | Description                                                                    |
+|-----------------------|--------------|--------------------------------------------------------------------------------|
+| `BEETS_API_URL`       | *(required)* | e.g. `http://beets:8337` (use container name if on same network)               |
+| `MUSIC_PATH`          | `/music`     | Mount point of the music share — safety boundary, no deletes outside this path |
+| `BEETS_LIBRARY_PATH`  | *(optional)* | Beets library root. Set if beets returns relative paths (e.g. /music/clean)    |
+| `PORT`                | `3001`       | Port beetjuice listens on                                                      |
+| `PUID`                | `99`         | UID (Unraid nobody)                                                            |
+| `PGID`                | `100`        | GID (Unraid users)                                                             |
 
 **Volume mounts:**
 

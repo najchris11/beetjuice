@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete } from '../services/beets.js'
-import { deleteFile, musicPath } from '../lib/files.js'
+import { deleteFile, musicPath, resolvePath } from '../lib/files.js'
 import { logger } from '../lib/logger.js'
 import type { Item } from '../types/beets.js'
 
@@ -40,16 +40,17 @@ router.delete('/:id', async (req, res) => {
     let fileDeleted = false
     const mp = musicPath()
     if (mp && item.path) {
+      const resolvedPath = resolvePath(item.path)
       // Safety: refuse to delete anything outside MUSIC_PATH
-      if (!item.path.startsWith(mp)) {
-        logger.warn(`item ${itemId}: path "${item.path}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
+      if (!resolvedPath.startsWith(mp)) {
+        logger.warn(`item ${itemId}: resolved path "${resolvedPath}" is outside MUSIC_PATH "${mp}" — skipping file deletion`)
       } else {
         // Verify the file actually exists before deleting
         try {
-          await fs.access(item.path, fs.constants.F_OK)
-          fileDeleted = await deleteFile(item.path)
+          await fs.access(resolvedPath, fs.constants.F_OK)
+          fileDeleted = await deleteFile(resolvedPath)
         } catch {
-          logger.warn(`item ${itemId}: file not found at ${item.path} — removing from DB only`)
+          logger.warn(`item ${itemId}: file not found at ${resolvedPath} — removing from DB only`)
         }
       }
     } else if (!mp) {

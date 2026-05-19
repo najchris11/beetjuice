@@ -40,6 +40,7 @@ app.get('/api/config', (_req, res) => {
   res.json({
     beetsApiUrl: process.env.BEETS_API_URL ?? '(not set)',
     musicPath: process.env.MUSIC_PATH ?? '(not set)',
+    beetsLibraryPath: process.env.BEETS_LIBRARY_PATH ?? '(not set — defaults to MUSIC_PATH)',
   })
 })
 
@@ -57,8 +58,9 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(PORT, () => {
   logger.info('beetjuice started')
-  logger.info(`port        ${PORT}`)
-  logger.info(`beets api   ${process.env.BEETS_API_URL ?? '(not set — check BEETS_API_URL)'}`)
-  logger.info(`music path  ${process.env.MUSIC_PATH ?? '(not set — file deletion disabled)'}`)
-  logger.info(`puid/pgid   ${process.env.PUID ?? 99}/${process.env.PGID ?? 100}`)
+  logger.info(`port              ${PORT}`)
+  logger.info(`beets api         ${process.env.BEETS_API_URL ?? '(not set — check BEETS_API_URL)'}`)
+  logger.info(`music path        ${process.env.MUSIC_PATH ?? '(not set — file deletion disabled)'}`)
+  logger.info(`beets lib path    ${process.env.BEETS_LIBRARY_PATH ?? '(not set — defaults to MUSIC_PATH)'}`)
+  logger.info(`puid/pgid         ${process.env.PUID ?? 99}/${process.env.PGID ?? 100}`)
 })
