@@ -136,9 +136,13 @@ function AlbumArtSmall({ albumId, name }: { albumId: number; name: string }) {
 function DuplicateGroupCard({
   group,
   onDelete,
+  onDismiss,
+  isDismissed,
 }: {
   group: DuplicateGroup
   onDelete: (album: AlbumSummary) => void
+  onDismiss: (group: DuplicateGroup) => void
+  isDismissed: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = reasonConfig[group.reason] ?? reasonConfig.fuzzy
@@ -166,15 +170,26 @@ function DuplicateGroupCard({
             {copies.length} copies
           </span>
         </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1"
-        >
-          {expanded ? 'Collapse' : 'Compare'}
-          <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {!isDismissed && (
+            <button
+              onClick={() => onDismiss(group)}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+              title="Mark as not a duplicate"
+            >
+              Not a duplicate
+            </button>
+          )}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1"
+          >
+            {expanded ? 'Collapse' : 'Compare'}
+            <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Quick summary — always visible */}
@@ -282,27 +297,64 @@ function DuplicateGroupCard({
   )
 }
 
+const DISMISSED_KEY = 'beetjuice:dismissed-dupes'
+
+function groupId(group: DuplicateGroup): string {
+  return `${group.reason}:${group.copies.map(c => c.id).sort().join(',')}`
+}
+
+function loadDismissed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDismissed(ids: Set<string>): void {
+  localStorage.setItem(DISMISSED_KEY, JSON.stringify([...ids]))
+}
+
 export default function Duplicates() {
   const { data: groups, isLoading, error } = useDuplicates()
   const deleteAlbum = useDeleteAlbum()
   const [confirm, setConfirm] = useState<AlbumSummary | null>(null)
   const [filter, setFilter] = useState<FilterReason>('all')
+  const [dismissed, setDismissed] = useState<Set<string>>(loadDismissed)
+  const [showDismissed, setShowDismissed] = useState(false)
+
+  const dismissGroup = (group: DuplicateGroup) => {
+    const next = new Set(dismissed)
+    next.add(groupId(group))
+    saveDismissed(next)
+    setDismissed(next)
+  }
+
+  const restoreAll = () => {
+    saveDismissed(new Set())
+    setDismissed(new Set())
+    setShowDismissed(false)
+  }
+
+  const visibleGroups = useMemo(() => {
+    if (!groups) return []
+    return groups.filter(g => showDismissed || !dismissed.has(groupId(g)))
+  }, [groups, dismissed, showDismissed])
 
   const filtered = useMemo(() => {
-    if (!groups) return []
-    if (filter === 'all') return groups
-    return groups.filter(g => g.reason === filter)
-  }, [groups, filter])
+    if (filter === 'all') return visibleGroups
+    return visibleGroups.filter(g => g.reason === filter)
+  }, [visibleGroups, filter])
 
   const counts = useMemo(() => {
-    if (!groups) return { all: 0, mb_albumid: 0, normalized_name: 0, fuzzy: 0 }
+    if (!visibleGroups) return { all: 0, mb_albumid: 0, normalized_name: 0, fuzzy: 0 }
     return {
-      all: groups.length,
-      mb_albumid: groups.filter(g => g.reason === 'mb_albumid').length,
-      normalized_name: groups.filter(g => g.reason === 'normalized_name').length,
-      fuzzy: groups.filter(g => g.reason === 'fuzzy').length,
+      all: visibleGroups.length,
+      mb_albumid: visibleGroups.filter(g => g.reason === 'mb_albumid').length,
+      normalized_name: visibleGroups.filter(g => g.reason === 'normalized_name').length,
+      fuzzy: visibleGroups.filter(g => g.reason === 'fuzzy').length,
     }
-  }, [groups])
+  }, [visibleGroups])
 
   if (isLoading) {
     return (
@@ -352,9 +404,25 @@ export default function Duplicates() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Duplicate Albums</h1>
-          <p className="text-sm text-[var(--text-muted)] mt-0.5">
-            {counts.all} group{counts.all !== 1 ? 's' : ''} found — review each and delete the copy you don't need.
-          </p>
+          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <p className="text-sm text-[var(--text-muted)]">
+              {counts.all} group{counts.all !== 1 ? 's' : ''} — review each and delete the copy you don't need.
+            </p>
+            {dismissed.size > 0 && (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <span>{dismissed.size} dismissed</span>
+                <button
+                  onClick={() => setShowDismissed(s => !s)}
+                  className="text-purple-400 hover:text-purple-300 transition-colors"
+                >
+                  {showDismissed ? 'Hide' : 'Show'}
+                </button>
+                <button onClick={restoreAll} className="text-[var(--text-muted)] hover:text-red-400 transition-colors">
+                  Reset
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
@@ -376,11 +444,13 @@ export default function Duplicates() {
 
       {/* Groups */}
       <div className="space-y-4">
-        {filtered.map((group, i) => (
+        {filtered.map((group) => (
           <DuplicateGroupCard
             key={`${group.reason}-${group.copies.map(c => c.id).join('-')}`}
             group={group}
             onDelete={album => setConfirm(album)}
+            onDismiss={dismissGroup}
+            isDismissed={dismissed.has(groupId(group))}
           />
         ))}
       </div>

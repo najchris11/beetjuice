@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import { beetsGet, beetsDelete } from '../services/beets.js'
 import { deleteFile, musicPath, resolvePath } from '../lib/files.js'
 import { logger } from '../lib/logger.js'
+import { cache } from '../lib/cache.js'
 import type { Item } from '../types/beets.js'
 
 const router = Router()
@@ -62,6 +63,7 @@ router.delete('/:id', async (req, res) => {
     // 3. Remove from beets DB (no ?delete — we handled the file above)
     await beetsDelete(`/item/${itemId}`, false)
 
+    cache.invalidate('albums', 'duplicates')
     logger.info(`deleted item ${itemId} "${item.title}" by ${item.artist} (file=${fileDeleted})`)
     res.json({ ok: true, fileDeleted })
   } catch (err) {

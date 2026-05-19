@@ -54,4 +54,7 @@ export interface DuplicateGroup {
 export interface Stats {
   items: number
   albums: number
+  totalSize?: number              // bytes across all albums
+  totalDuration?: number          // seconds across all albums
+  formatCounts?: Record<string, number>  // format → track count
 }

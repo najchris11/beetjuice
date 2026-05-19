@@ -4,11 +4,17 @@ import { beetsGet, beetsDelete, beetsGetRaw } from '../services/beets.js'
 import { enrichAlbum } from '../lib/duplicates.js'
 import { deleteDir, deleteFile, readArtwork, musicPath, resolvePath } from '../lib/files.js'
 import { logger } from '../lib/logger.js'
+import { cache, ALBUMS_TTL } from '../lib/cache.js'
 import type { Album, Item, AlbumSummary } from '../types/beets.js'
 
 const router = Router()
 
 router.get('/', async (_req, res) => {
+  const cached = cache.get<AlbumSummary[]>('albums')
+  if (cached) {
+    res.json(cached)
+    return
+  }
   try {
     const [albumData, itemData] = await Promise.all([
       beetsGet<{ albums: Album[] }>('/album/'),
@@ -49,6 +55,7 @@ router.get('/', async (_req, res) => {
       )
     }
 
+    cache.set('albums', enriched, ALBUMS_TTL)
     res.json(enriched)
   } catch (err) {
     logger.error(`GET /api/albums: ${String(err)}`)
@@ -179,6 +186,7 @@ router.delete('/:id', async (req, res) => {
       // Album record may already be gone
     }
 
+    cache.invalidate('albums', 'duplicates')
     logger.info(`deleted album ${albumId} "${album.album}" by ${album.albumartist} (files=${filesDeleted})`)
     res.json({ ok: true, filesDeleted })
   } catch (err) {
