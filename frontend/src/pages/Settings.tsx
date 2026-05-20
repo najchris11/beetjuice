@@ -27,6 +27,118 @@ interface HealthResult {
   checks: Record<string, CheckResult>
 }
 
+function DirPicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [open, setOpen] = useState(false)
+  const [browsePath, setBrowsePath] = useState('')
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['dirs', browsePath],
+    queryFn: (): Promise<{ dirs: string[]; current: string }> =>
+      fetch(`/api/playlists/dirs?path=${encodeURIComponent(browsePath)}`).then(r => r.json()),
+    enabled: open,
+    staleTime: 30_000,
+  })
+
+  const openBrowser = () => {
+    setBrowsePath(value || '')
+    setOpen(true)
+  }
+
+  const segments = browsePath ? browsePath.split('/').filter(Boolean) : []
+
+  return (
+    <div className="relative">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/50 focus:outline-none focus:border-purple-500/50 font-mono"
+        />
+        <button
+          type="button"
+          onClick={openBrowser}
+          className="px-2.5 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:border-purple-500/40 transition-all"
+          title="Browse directories"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 z-40 mt-1 w-80 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] shadow-2xl overflow-hidden">
+            {/* Breadcrumb */}
+            <div className="px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] flex items-center gap-1 flex-wrap text-xs min-h-[36px]">
+              <button onClick={() => setBrowsePath('')} className="text-purple-400 hover:text-purple-300 font-medium">
+                root
+              </button>
+              {segments.map((seg, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <span className="text-[var(--text-muted)]/40">/</span>
+                  <button
+                    onClick={() => setBrowsePath(segments.slice(0, i + 1).join('/'))}
+                    className="text-purple-400 hover:text-purple-300"
+                  >
+                    {seg}
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Dir list */}
+            <div className="max-h-52 overflow-y-auto">
+              {isFetching ? (
+                <p className="px-4 py-6 text-xs text-[var(--text-muted)] text-center">Loading…</p>
+              ) : !data?.dirs.length ? (
+                <p className="px-4 py-6 text-xs text-[var(--text-muted)] text-center">No subdirectories here</p>
+              ) : (
+                data.dirs.map(dir => (
+                  <button
+                    key={dir}
+                    onClick={() => setBrowsePath(browsePath ? `${browsePath}/${dir}` : dir)}
+                    className="w-full px-4 py-2.5 text-left text-sm text-[var(--text-secondary)] hover:bg-white/[0.04] hover:text-[var(--text-primary)] transition-colors flex items-center gap-2.5"
+                  >
+                    <svg className="w-3.5 h-3.5 text-[var(--text-muted)]/60 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                    </svg>
+                    {dir}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-3 py-2 bg-[var(--bg-secondary)] border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
+              <span className="text-xs text-[var(--text-muted)] font-mono truncate max-w-[160px]">
+                {browsePath || '/'}
+              </span>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => setOpen(false)}
+                  className="px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { onChange(browsePath); setOpen(false) }}
+                  className="px-3 py-1 text-xs rounded-md bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/20 font-medium transition-all"
+                >
+                  Select
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ConfigItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-4 py-3 border-b border-[var(--border-subtle)]/50 last:border-0">
@@ -111,8 +223,8 @@ export default function Settings() {
   }
 
   const testConnection = () => {
-    if (!ndConfig.url || !ndConfig.token) return
-    testNavidrome.mutate({ url: ndConfig.url, token: ndConfig.token })
+    if (!ndConfig.url || !ndConfig.username || !ndConfig.password) return
+    testNavidrome.mutate({ url: ndConfig.url, username: ndConfig.username, password: ndConfig.password })
   }
 
   const runDiagnostics = async () => {
@@ -217,9 +329,8 @@ export default function Settings() {
         <div className="p-6 space-y-4">
           {[
             { key: 'url', label: 'Navidrome URL', placeholder: 'http://navidrome:4533', type: 'url' },
-            { key: 'token', label: 'Bearer Token', placeholder: 'your-token-here', type: 'password' },
-            { key: 'playlistsPath', label: 'Playlists Path', placeholder: '_playlists (relative to library root)', type: 'text' },
-            { key: 'stagingFolder', label: 'Staging Folder', placeholder: '_import (default)', type: 'text' },
+            { key: 'username', label: 'Username', placeholder: 'admin', type: 'text' },
+            { key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' },
           ].map(({ key, label, placeholder, type }) => (
             <div key={key}>
               <label className="block text-xs text-[var(--text-muted)] font-medium mb-1.5">{label}</label>
@@ -233,6 +344,26 @@ export default function Settings() {
             </div>
           ))}
 
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] font-medium mb-1.5">Playlists Path</label>
+            <DirPicker
+              value={ndConfig.playlistsPath ?? ''}
+              onChange={v => setNdConfig(c => ({ ...c, playlistsPath: v }))}
+              placeholder="_playlists (relative to library root)"
+            />
+            <p className="mt-1 text-xs text-[var(--text-muted)]/60">Where .m3u files are written for Navidrome to pick up</p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] font-medium mb-1.5">Staging Folder</label>
+            <DirPicker
+              value={ndConfig.stagingFolder ?? ''}
+              onChange={v => setNdConfig(c => ({ ...c, stagingFolder: v }))}
+              placeholder="_import (default)"
+            />
+            <p className="mt-1 text-xs text-[var(--text-muted)]/60">Unmatched tracks are copied here for beets to import</p>
+          </div>
+
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={saveNdConfig}
@@ -242,7 +373,7 @@ export default function Settings() {
             </button>
             <button
               onClick={testConnection}
-              disabled={!ndConfig.url || !ndConfig.token || testNavidrome.isPending}
+              disabled={!ndConfig.url || !ndConfig.username || !ndConfig.password || testNavidrome.isPending}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:bg-white/[0.08] hover:text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed border border-[var(--border-subtle)] transition-all"
             >
               {testNavidrome.isPending ? 'Testing…' : 'Test Connection'}

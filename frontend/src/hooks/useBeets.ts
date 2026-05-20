@@ -184,11 +184,11 @@ export function useExportPlaylist() {
 
 export function useTestNavidrome() {
   return useMutation({
-    mutationFn: ({ url, token }: { url: string; token: string }) =>
+    mutationFn: ({ url, username, password }: { url: string; username: string; password: string }) =>
       apiFetch<{ ok: boolean; message: string }>('/api/playlists/test-navidrome', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, token }),
+        body: JSON.stringify({ url, username, password }),
       }),
   })
 }

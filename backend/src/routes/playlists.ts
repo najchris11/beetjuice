@@ -109,9 +109,9 @@ router.post('/export', async (req, res) => {
   }
 
   // Navidrome API
-  if (navidrome.url && navidrome.token) {
+  if (navidrome.url && navidrome.username && navidrome.password) {
     try {
-      await postPlaylistToNavidrome(navidrome.url, navidrome.token, playlistName, m3uContent)
+      await postPlaylistToNavidrome(navidrome.url, navidrome.username, navidrome.password, playlistName, m3uContent)
       result.postedToNavidrome = true
       logger.info(`playlist "${playlistName}" posted to Navidrome`)
     } catch (err) {
@@ -124,13 +124,42 @@ router.post('/export', async (req, res) => {
 })
 
 router.post('/test-navidrome', async (req, res) => {
-  const { url, token } = req.body as { url?: string; token?: string }
-  if (!url || !token) {
-    res.status(400).json({ error: 'Missing url or token' })
+  const { url, username, password } = req.body as { url?: string; username?: string; password?: string }
+  if (!url || !username || !password) {
+    res.status(400).json({ error: 'Missing url, username, or password' })
     return
   }
-  const result = await testNavidromeConnection(url, token)
+  const result = await testNavidromeConnection(url, username, password)
   res.json(result)
+})
+
+router.get('/dirs', async (req, res) => {
+  const lib = libraryPath()
+  if (!lib) {
+    res.status(503).json({ error: 'BEETS_LIBRARY_PATH not configured' })
+    return
+  }
+
+  const subpath = (req.query.path as string) ?? ''
+  const parts = subpath.split('/').filter(p => p && p !== '..' && p !== '.')
+  const safeSub = parts.join('/')
+  const targetDir = safeSub ? path.join(lib, safeSub) : lib
+
+  if (!targetDir.startsWith(lib)) {
+    res.status(400).json({ error: 'Path outside library' })
+    return
+  }
+
+  try {
+    const entries = await fs.readdir(targetDir, { withFileTypes: true })
+    const dirs = entries
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name)
+      .sort()
+    res.json({ dirs, current: safeSub })
+  } catch {
+    res.json({ dirs: [], current: safeSub })
+  }
 })
 
 async function resolveTrackPath(

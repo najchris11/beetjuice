@@ -35,7 +35,8 @@ export interface TrackSelection {
 
 export interface NavidromeConfig {
   url?: string
-  token?: string
+  username?: string
+  password?: string
   playlistsPath?: string
   stagingFolder?: string
 }
