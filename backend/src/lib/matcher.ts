@@ -1,10 +1,11 @@
 import { distance } from 'fastest-levenshtein'
 import type { Item } from '../types/beets.js'
-import type { ParsedEntry, MatchResult, MatchedItem } from '../types/playlists.js'
+import type { ParsedEntry, MatchCandidate, MatchResult, MatchedItem } from '../types/playlists.js'
 import { resolvePath } from './files.js'
 
 const MATCHED_THRESHOLD = 0.75
 const LOW_CONFIDENCE_THRESHOLD = 0.5
+const MAX_CANDIDATES = 5
 
 function normalizeString(s: string): string {
   return s
@@ -58,19 +59,19 @@ function matchEntry(
   if (entry.mbTrackId) {
     const exact = mbIndex.get(entry.mbTrackId)
     if (exact) {
-      return makeResult(entry, exact, 1.0, 'matched')
+      return makeResult(entry, exact, 1.0, 'matched', [])
     }
   }
 
   if (!entry.title && !entry.artist) {
-    return { entry, status: 'unmatched', confidence: 0, item: null, sourcePath: resolveSourcePath(entry) }
+    return { entry, status: 'unmatched', confidence: 0, item: null, candidates: [], sourcePath: resolveSourcePath(entry) }
   }
 
   const normEntryTitle = normalizeString(entry.title ?? '')
   const normEntryArtist = normalizeString(entry.artist ?? '')
   const normEntryAlbum = normalizeString(entry.album ?? '')
 
-  let best: { item: Item; confidence: number } | null = null
+  const scored: { item: Item; confidence: number }[] = []
 
   for (const n of normalized) {
     const titleSim = normEntryTitle ? similarity(normEntryTitle, n.normTitle) : 0
@@ -85,28 +86,54 @@ function matchEntry(
     // Cap fuzzy confidence below the matched threshold
     confidence = Math.min(0.85, Math.max(0, confidence))
 
-    if (!best || confidence > best.confidence) {
-      best = { item: n.item, confidence }
-    }
+    scored.push({ item: n.item, confidence })
   }
 
-  if (!best || best.confidence < LOW_CONFIDENCE_THRESHOLD) {
-    return { entry, status: 'unmatched', confidence: 0, item: null, sourcePath: resolveSourcePath(entry) }
+  scored.sort((a, b) => b.confidence - a.confidence)
+  const candidates = scored
+    .filter(candidate => candidate.confidence >= LOW_CONFIDENCE_THRESHOLD)
+    .slice(0, MAX_CANDIDATES)
+    .map(candidate => makeCandidate(candidate.item, candidate.confidence))
+
+  const best = candidates[0]
+
+  if (!best) {
+    return { entry, status: 'unmatched', confidence: 0, item: null, candidates: [], sourcePath: resolveSourcePath(entry) }
   }
 
   const status = best.confidence >= MATCHED_THRESHOLD ? 'matched' : 'low_confidence'
-  return makeResult(entry, best.item, best.confidence, status)
+  return makeResult(entry, best, best.confidence, status, candidates)
 }
 
-function makeResult(entry: ParsedEntry, item: Item, confidence: number, status: MatchResult['status']): MatchResult {
-  const matched: MatchedItem = {
+function makeResult(
+  entry: ParsedEntry,
+  item: Item | MatchCandidate,
+  confidence: number,
+  status: MatchResult['status'],
+  candidates: MatchCandidate[],
+): MatchResult {
+  const matched = makeCandidate(item, confidence)
+  return { entry, status, confidence, item: matched, candidates, sourcePath: null }
+}
+
+function makeCandidate(item: Item | MatchCandidate, confidence: number): MatchCandidate {
+  return {
     id: item.id,
     title: item.title,
     artist: item.artist,
     album: item.album,
+    albumartist: item.albumartist,
+    track: item.track,
+    disc: item.disc,
+    year: item.year,
+    format: item.format,
+    bitrate: item.bitrate,
+    samplerate: item.samplerate,
+    bitdepth: item.bitdepth,
+    length: item.length,
     path: resolvePath(item.path),
+    confidence,
   }
-  return { entry, status, confidence, item: matched, sourcePath: null }
 }
 
 function resolveSourcePath(entry: ParsedEntry): string | null {

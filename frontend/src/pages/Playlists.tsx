@@ -18,6 +18,29 @@ function loadNdConfig(): NavidromeConfig {
 interface RowState {
   result: MatchResult
   included: boolean
+  mode: 'library' | 'stage'
+  selectedCandidateId: number | null
+}
+
+function getSelectedCandidate(row: RowState) {
+  return row.result.candidates.find(candidate => candidate.id === row.selectedCandidateId) ?? row.result.item ?? null
+}
+
+function candidateSummary(candidate: { album: string; albumartist: string; track: number; disc: number; year: number; format: string; bitrate: number; samplerate: number; bitdepth: number; length: number }) {
+  const bitrate = candidate.bitrate >= 1000 ? `${Math.round(candidate.bitrate / 1000)} kbps` : `${candidate.bitrate} bps`
+  const sampleRate = candidate.samplerate >= 1000 ? `${(candidate.samplerate / 1000).toFixed(candidate.samplerate % 1000 === 0 ? 0 : 1)} kHz` : `${candidate.samplerate} Hz`
+  const pieces = [
+    candidate.albumartist,
+    candidate.album,
+    `Disc ${candidate.disc} Track ${candidate.track}`,
+    candidate.year ? String(candidate.year) : '',
+    candidate.format,
+    bitrate,
+    sampleRate,
+    candidate.bitdepth ? `${candidate.bitdepth}-bit` : '',
+    candidate.length ? `${Math.round(candidate.length)}s` : '',
+  ].filter(Boolean)
+  return pieces.join(' · ')
 }
 
 function statusColor(result: MatchResult) {
@@ -30,6 +53,10 @@ function statusBadge(result: MatchResult) {
   if (result.status === 'matched') return 'Matched'
   if (result.status === 'low_confidence') return 'Review'
   return result.sourcePath ? 'Copy to staging' : 'Not found'
+}
+
+function modeBadge(mode: 'library' | 'stage') {
+  return mode === 'library' ? 'Library export' : 'Stage to folder'
 }
 
 function StatusDot({ result }: { result: MatchResult }) {
@@ -183,6 +210,17 @@ export default function Playlists() {
   const exportMutation = useExportPlaylist()
   const ndConfig = loadNdConfig()
 
+  const makeRowState = (result: MatchResult): RowState => {
+    const hasSource = !!result.sourcePath
+    const selectedCandidateId = result.item?.id ?? result.candidates[0]?.id ?? null
+    return {
+      result,
+      included: result.status !== 'unmatched' || hasSource,
+      mode: result.status === 'unmatched' && hasSource ? 'stage' : 'library',
+      selectedCandidateId,
+    }
+  }
+
   const handleServerSelect = (relativePath: string, name: string) => {
     setPickerOpen(false)
     setSelectedServerPath(relativePath)
@@ -193,10 +231,7 @@ export default function Playlists() {
     if (!selectedServerPath) return
     importMutation.mutate({ filePath: selectedServerPath }, {
       onSuccess: results => {
-        setRows(results.map(r => ({
-          result: r,
-          included: r.status !== 'unmatched' || !!r.sourcePath,
-        })))
+        setRows(results.map(makeRowState))
         setStage('review')
       },
     })
@@ -210,10 +245,7 @@ export default function Playlists() {
     setPlaylistName(file.name.replace(/\.m3u8?$/i, ''))
     importMutation.mutate(file, {
       onSuccess: results => {
-        setRows(results.map(r => ({
-          result: r,
-          included: r.status !== 'unmatched' || !!r.sourcePath,
-        })))
+        setRows(results.map(makeRowState))
         setStage('review')
       },
     })
@@ -230,6 +262,14 @@ export default function Playlists() {
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, included: !r.included } : r))
   }
 
+  const setRowMode = (i: number, mode: 'library' | 'stage') => {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, mode, included: true } : r))
+  }
+
+  const selectCandidate = (i: number, candidateId: number) => {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, selectedCandidateId: candidateId, mode: 'library', included: true } : r))
+  }
+
   const includedCount = rows.filter(r => r.included).length
   const matchedCount = rows.filter(r => r.result.status === 'matched').length
   const reviewCount = rows.filter(r => r.result.status === 'low_confidence').length
@@ -238,13 +278,17 @@ export default function Playlists() {
   const handleExport = () => {
     const tracks: TrackSelection[] = rows
       .filter(r => r.included)
-      .map(r => ({
-        title: r.result.entry.title ?? r.result.item?.title ?? 'Unknown',
-        artist: r.result.entry.artist ?? r.result.item?.artist ?? 'Unknown',
-        duration: r.result.entry.duration,
-        itemPath: r.result.item?.path ?? null,
-        sourcePath: r.result.sourcePath,
-      }))
+      .map(r => {
+        const selectedCandidate = getSelectedCandidate(r)
+        return {
+          title: r.result.entry.title ?? selectedCandidate?.title ?? 'Unknown',
+          artist: r.result.entry.artist ?? selectedCandidate?.artist ?? 'Unknown',
+          duration: r.result.entry.duration,
+          mode: r.mode,
+          itemPath: r.mode === 'library' ? (selectedCandidate?.path ?? null) : null,
+          sourcePath: r.result.sourcePath,
+        }
+      })
 
     exportMutation.mutate(
       { playlistName, tracks, navidrome: ndConfig },
@@ -253,7 +297,7 @@ export default function Playlists() {
           const parts: string[] = []
           if (result.writtenTo) parts.push(`Written to ${result.writtenTo}`)
           if (result.postedToNavidrome) parts.push('Posted to Navidrome')
-          if (result.stagedFiles > 0) parts.push(`${result.stagedFiles} file(s) copied to staging`)
+          if (result.stagedFiles > 0) parts.push(`${result.stagedFiles} track(s) moved to the playlist staging folder`)
           if (result.skippedFiles > 0) parts.push(`${result.skippedFiles} file(s) skipped`)
           setExportResult(parts.join(' · ') || 'Export complete')
           setStage('done')
@@ -419,7 +463,9 @@ export default function Playlists() {
                 </thead>
                 <tbody className="divide-y divide-[var(--border-subtle)]/50">
                   {rows.map((row, i) => {
+                    const selectedCandidate = getSelectedCandidate(row)
                     const canInclude = row.result.status !== 'unmatched' || !!row.result.sourcePath
+                    const canStage = !!row.result.sourcePath
                     return (
                       <tr
                         key={i}
@@ -437,9 +483,15 @@ export default function Playlists() {
                         <td className="px-4 py-3">
                           <div className="flex items-start gap-2">
                             <StatusDot result={row.result} />
-                            <span className={`text-xs font-medium ${statusColor(row.result)}`}>
-                              {statusBadge(row.result)}
-                            </span>
+                            <div className="space-y-1">
+                              <span className={`text-xs font-medium ${statusColor(row.result)}`}>
+                                {statusBadge(row.result)}
+                              </span>
+                              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--text-muted)]/70">
+                                <span>{modeBadge(row.mode)}</span>
+                                {row.mode === 'stage' && <span className="text-orange-400">moving files</span>}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -452,11 +504,66 @@ export default function Playlists() {
                           </p>
                         </td>
                         <td className="px-4 py-3">
-                          {row.result.item ? (
-                            <>
-                              <p className="text-[var(--text-secondary)] leading-tight">{row.result.item.title}</p>
-                              <p className="text-xs text-[var(--text-muted)] mt-0.5">{row.result.item.artist}</p>
-                            </>
+                          {selectedCandidate ? (
+                            <div className="space-y-2">
+                              <div>
+                                <p className="text-[var(--text-secondary)] leading-tight">{selectedCandidate.title}</p>
+                                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                  {selectedCandidate.artist}
+                                  {selectedCandidate.album ? ` · ${selectedCandidate.album}` : ''}
+                                </p>
+                                <p className="text-[11px] text-[var(--text-muted)]/75 mt-1">
+                                  {candidateSummary(selectedCandidate)}
+                                </p>
+                              </div>
+
+                              {row.result.candidates.length > 1 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {row.result.candidates.slice(0, 4).map(candidate => {
+                                    const active = candidate.id === selectedCandidate.id
+                                    return (
+                                      <button
+                                        key={candidate.id}
+                                        onClick={() => selectCandidate(i, candidate.id)}
+                                        className={`rounded-lg border px-2.5 py-1 text-left transition-colors ${
+                                          active
+                                            ? 'border-purple-500/50 bg-purple-500/10 text-purple-200'
+                                            : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:border-purple-500/30 hover:text-[var(--text-secondary)]'
+                                        }`}
+                                      >
+                                        <div className="text-[11px] font-medium leading-tight">{candidate.title}</div>
+                                        <div className="text-[10px] mt-0.5 opacity-80">{Math.round(candidate.confidence * 100)}%</div>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
+                              {canStage && (
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    onClick={() => setRowMode(i, 'library')}
+                                    className={`rounded-lg px-2.5 py-1 text-[11px] border transition-colors ${
+                                      row.mode === 'library'
+                                        ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                                        : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                    }`}
+                                  >
+                                    Use library match
+                                  </button>
+                                  <button
+                                    onClick={() => setRowMode(i, 'stage')}
+                                    className={`rounded-lg px-2.5 py-1 text-[11px] border transition-colors ${
+                                      row.mode === 'stage'
+                                        ? 'border-orange-500/40 bg-orange-500/10 text-orange-300'
+                                        : 'border-[var(--border-subtle)] bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                                    }`}
+                                  >
+                                    Stage to playlist folder
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           ) : row.result.sourcePath ? (
                             <p className="text-xs text-[var(--text-muted)] font-mono truncate max-w-xs">
                               {row.result.sourcePath.split('/').slice(-2).join('/')}

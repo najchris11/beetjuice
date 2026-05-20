@@ -119,9 +119,10 @@ router.post('/export', async (req, res) => {
   const lib = libraryPath()
   const mp = musicPath()
   const stagingFolder = navidrome.stagingFolder || '_import'
-  // Staging lives under MUSIC_PATH (outside the clean library), falling back to library root
+  // Staging lives under MUSIC_PATH when available, falling back to the library root
   const stagingRoot = mp || lib
-  const stagingDir = stagingRoot ? path.join(stagingRoot, stagingFolder) : null
+  const sourceRoot = mp || lib || null
+  const stagingDir = stagingRoot ? path.join(stagingRoot, stagingFolder, sanitizeFilename(playlistName)) : null
 
   const result: ExportResult = {
     ok: false,
@@ -134,7 +135,7 @@ router.post('/export', async (req, res) => {
   const resolved: { title: string; artist: string; duration: number | null; relativePath: string }[] = []
 
   for (const track of tracks) {
-    const rel = await resolveTrackPath(track, lib, mp, stagingDir, result)
+    const rel = await resolveTrackPath(track, sourceRoot, stagingDir, result)
     if (rel) {
       resolved.push({ title: track.title, artist: track.artist, duration: track.duration, relativePath: rel })
     }
@@ -229,12 +230,16 @@ router.get('/dirs', async (req, res) => {
 
 async function resolveTrackPath(
   track: TrackSelection,
-  lib: string | null,
-  mp: string | undefined,
+  sourceRoot: string | null,
   stagingDir: string | null,
   result: ExportResult,
 ): Promise<string | null> {
-  if (track.itemPath) {
+  if (track.mode === 'library') {
+    if (!track.itemPath) {
+      logger.warn(`track "${track.title}" has no library path — skipping`)
+      result.skippedFiles++
+      return null
+    }
     const rel = makeRelative(track.itemPath)
     if (rel) return rel
     logger.warn(`track "${track.title}" has path outside library — skipping`)
@@ -242,29 +247,60 @@ async function resolveTrackPath(
     return null
   }
 
-  if (track.sourcePath && stagingDir && lib && mp) {
-    // Safety check: source must be within MUSIC_PATH
-    if (!track.sourcePath.startsWith(mp)) {
-      logger.warn(`staging source "${track.sourcePath}" outside MUSIC_PATH — skipping`)
-      result.skippedFiles++
-      return null
+  if (!track.sourcePath || !stagingDir || !sourceRoot) {
+    logger.warn(`track "${track.title}" cannot be staged — missing source path or staging root`)
+    result.skippedFiles++
+    return null
+  }
+
+  // Safety check: source must stay within the chosen staging root
+  if (!track.sourcePath.startsWith(sourceRoot)) {
+    logger.warn(`staging source "${track.sourcePath}" outside staging root "${sourceRoot}" — skipping`)
+    result.skippedFiles++
+    return null
+  }
+
+  try {
+    await fs.mkdir(stagingDir, { recursive: true })
+    const stagedAudio = await moveFile(track.sourcePath, path.join(stagingDir, path.basename(track.sourcePath)))
+    await moveSidecarLrc(track.sourcePath, stagingDir)
+    const rel = makeRelative(stagedAudio)
+    if (rel) {
+      result.stagedFiles++
+      return rel
     }
-    try {
-      await fs.mkdir(stagingDir, { recursive: true })
-      const dest = path.join(stagingDir, path.basename(track.sourcePath))
-      await fs.copyFile(track.sourcePath, dest)
-      const rel = makeRelative(dest)
-      if (rel) {
-        result.stagedFiles++
-        return rel
-      }
-    } catch (err) {
-      logger.warn(`failed to stage "${track.sourcePath}": ${String(err)}`)
-      result.skippedFiles++
-    }
+  } catch (err) {
+    logger.warn(`failed to stage "${track.sourcePath}": ${String(err)}`)
+    result.skippedFiles++
   }
 
   return null
+}
+
+async function moveSidecarLrc(sourcePath: string, stagingDir: string): Promise<void> {
+  const sidecarSource = sourcePath.replace(/\.[^.\/]+$/, '.lrc')
+  try {
+    await fs.access(sidecarSource)
+  } catch {
+    return
+  }
+  const sidecarDest = path.join(stagingDir, path.basename(sidecarSource))
+  await moveFile(sidecarSource, sidecarDest)
+}
+
+async function moveFile(sourcePath: string, destPath: string): Promise<string> {
+  await fs.rm(destPath, { force: true })
+  try {
+    await fs.rename(sourcePath, destPath)
+  } catch (err) {
+    const code = typeof err === 'object' && err && 'code' in err ? (err as NodeJS.ErrnoException).code : undefined
+    if (code !== 'EXDEV') {
+      throw err
+    }
+    await fs.copyFile(sourcePath, destPath)
+    await fs.unlink(sourcePath)
+  }
+  return destPath
 }
 
 function sanitizeFilename(name: string): string {
