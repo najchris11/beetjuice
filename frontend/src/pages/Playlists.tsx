@@ -270,6 +270,10 @@ export default function Playlists() {
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, selectedCandidateId: candidateId, mode: 'library', included: true } : r))
   }
 
+  const rejectAllCandidates = (i: number) => {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, selectedCandidateId: null, included: false } : r))
+  }
+
   const includedCount = rows.filter(r => r.included).length
   const matchedCount = rows.filter(r => r.result.status === 'matched').length
   const reviewCount = rows.filter(r => r.result.status === 'low_confidence').length
@@ -536,6 +540,12 @@ export default function Playlists() {
                                       </button>
                                     )
                                   })}
+                                  <button
+                                    onClick={() => rejectAllCandidates(i)}
+                                    className="rounded-lg border px-2.5 py-1 text-[11px] border-red-500/40 bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"
+                                  >
+                                    None of these
+                                  </button>
                                 </div>
                               )}
 
