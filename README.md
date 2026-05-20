@@ -1,8 +1,8 @@
 # 🧃 beetjuice
 
-A web UI for managing your [beets](https://beets.io/) music library. Browse albums, detect duplicates, compare audio quality, and clean up your collection — all from the browser.
+A web UI for managing your [beets](https://beets.io/) music library. Browse albums, detect duplicates, compare audio quality, clean up your collection, and import/export M3U playlists — all from the browser.
 
-Built as a companion to [beets-flask](https://github.com/pSpitzworker/beets-flask) (which handles importing). Beetjuice handles the other half: **browsing, duplicate awareness, and deletion**.
+Built as a companion to [beets-flask](https://github.com/pSpitzworker/beets-flask) (which handles importing). Beetjuice handles the other half: **browsing, duplicate awareness, deletion, and playlist management**.
 
 ![React](https://img.shields.io/badge/React_18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
@@ -32,9 +32,21 @@ Built as a companion to [beets-flask](https://github.com/pSpitzworker/beets-flas
 - Toast notifications for success/error feedback
 - Fallback deletion strategy (album-level → item-by-item)
 
+### 🎵 Playlist Import/Export (M3U)
+
+- Browse your music directory server-side to select an M3U playlist file
+- Reads audio file tags directly (ID3, FLAC, Vorbis, etc.) for accurate track matching — works even when the M3U has no EXTINF metadata
+- Three-pass matching: MusicBrainz recording ID → weighted fuzzy title/artist/album (Levenshtein)
+- Review table with match confidence per track; toggle any track in/out before export
+- Export options: write M3U to Navidrome's playlist directory and/or POST via Navidrome API
+- Unmatched tracks with a known source file are copied to a configurable staging folder
+- Falls back to local file upload when the M3U is not on the server
+
 ### 📊 Stats & Settings
-- Library overview with album/track counts
-- Read-only configuration display
+
+- Library overview with album/track counts, total size, duration, and format breakdown
+- Navidrome integration settings (URL, credentials, playlist path, staging folder)
+- Directory pickers for playlist and staging paths, browsing directly from the music share
 
 ---
 
@@ -147,18 +159,22 @@ beetjuice/
 
 All routes are prefixed `/api/`.
 
-| Method   | Path                      | Description                          |
-|----------|---------------------------|--------------------------------------|
-| `GET`    | `/api/albums`             | All albums (enriched with metadata)  |
-| `GET`    | `/api/albums/:id`         | Single album by beets ID             |
-| `GET`    | `/api/albums/:id/art`     | Cover art (proxied, avoids CORS)     |
-| `GET`    | `/api/albums/:id/items`   | All tracks for an album              |
-| `DELETE` | `/api/albums/:id`         | Delete album + files                 |
-| `GET`    | `/api/items`              | Search tracks (`?q=query`)           |
-| `GET`    | `/api/items/:id`          | Single track by beets ID             |
-| `DELETE` | `/api/items/:id`          | Delete track + file                  |
-| `GET`    | `/api/duplicates`         | Albums grouped as duplicate sets     |
-| `GET`    | `/api/stats`              | Album/track counts                   |
+| Method   | Path                            | Description                                          |
+|----------|---------------------------------|------------------------------------------------------|
+| `GET`    | `/api/albums`                   | All albums (enriched with metadata)                  |
+| `GET`    | `/api/albums/:id`               | Single album by beets ID                             |
+| `GET`    | `/api/albums/:id/art`           | Cover art (proxied, avoids CORS)                     |
+| `GET`    | `/api/albums/:id/items`         | All tracks for an album                              |
+| `DELETE` | `/api/albums/:id`               | Delete album + files                                 |
+| `GET`    | `/api/items`                    | Search tracks (`?q=query`)                           |
+| `GET`    | `/api/items/:id`                | Single track by beets ID                             |
+| `DELETE` | `/api/items/:id`                | Delete track + file                                  |
+| `GET`    | `/api/duplicates`               | Albums grouped as duplicate sets                     |
+| `GET`    | `/api/stats`                    | Album/track counts                                   |
+| `POST`   | `/api/playlists/import`         | Match M3U tracks against the beets library           |
+| `POST`   | `/api/playlists/export`         | Write resolved M3U to filesystem or Navidrome        |
+| `GET`    | `/api/playlists/dirs`           | Browse dirs; add ?files=m3u to include .m3u files    |
+| `POST`   | `/api/playlists/test-navidrome` | Verify Navidrome credentials                         |
 
 ---
 

@@ -5,6 +5,7 @@ export interface ParsedEntry {
   duration: number | null
   originalPath: string
   mbTrackId: string | null
+  resolvedFilePath: string | null
 }
 
 export type MatchStatus = 'matched' | 'low_confidence' | 'unmatched'

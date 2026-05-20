@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(find /Users/najchris11/GitHub/collectr/src/matcher -type f)",
+      "Read(//Users/najchris11/GitHub/collectr/src/matcher/**)",
+      "WebFetch(domain:docs.beets.io)",
+      "Read(//Users/najchris11/GitHub/collectr/src/playlist/**)",
+      "Read(//Users/najchris11/GitHub/collectr/**)",
+      "Read(//Users/najchris11/GitHub/collectr/src/**)"
+    ]
+  }
+}

@@ -110,6 +110,7 @@ function makeResult(entry: ParsedEntry, item: Item, confidence: number, status: 
 }
 
 function resolveSourcePath(entry: ParsedEntry): string | null {
+  if (entry.resolvedFilePath) return entry.resolvedFilePath
   const p = entry.originalPath
   if (!p || !p.startsWith('/')) return null
   return p

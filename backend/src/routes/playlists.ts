@@ -7,9 +7,10 @@ import { logger } from '../lib/logger.js'
 import { cache, ALBUMS_TTL } from '../lib/cache.js'
 import { parseM3u, buildM3u } from '../lib/m3u.js'
 import { matchItems } from '../lib/matcher.js'
+import { readFileTagsBatch } from '../lib/tags.js'
 import { postPlaylistToNavidrome, testNavidromeConnection } from '../lib/navidrome.js'
-import type { Item } from '../types/beets.js'
-import type { ExportRequest, ExportResult, TrackSelection } from '../types/playlists.js'
+import type { Item, } from '../types/beets.js'
+import type { ExportRequest, ExportResult, ParsedEntry, TrackSelection } from '../types/playlists.js'
 
 const router = Router()
 
@@ -33,14 +34,39 @@ function makeRelative(absolutePath: string): string | null {
 }
 
 router.post('/import', async (req, res) => {
-  const { content, filename } = req.body as { content?: string; filename?: string }
-  if (!content) {
-    res.status(400).json({ error: 'Missing M3U content' })
-    return
-  }
+  const { content, filename, filePath } = req.body as { content?: string; filename?: string; filePath?: string }
 
   try {
-    const entries = parseM3u(content)
+    let entries: ParsedEntry[]
+    let label: string
+
+    if (filePath) {
+      // Server-side: read the M3U from disk, resolve audio file paths, read their tags
+      const mp = musicPath()
+      if (!mp) {
+        res.status(503).json({ error: 'MUSIC_PATH not configured' })
+        return
+      }
+      // Accept either an absolute path or a path relative to MUSIC_PATH
+      const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(mp, filePath)
+      if (!absolutePath.startsWith(mp)) {
+        res.status(400).json({ error: 'filePath must be within MUSIC_PATH' })
+        return
+      }
+      const m3uContent = await fs.readFile(absolutePath, 'utf-8')
+      const raw = parseM3u(m3uContent)
+      const m3uDir = path.dirname(absolutePath)
+      entries = await enrichEntriesFromFiles(raw, m3uDir)
+      label = path.basename(absolutePath)
+    } else if (content) {
+      // Client-side upload: use EXTINF metadata only (no file access)
+      entries = parseM3u(content)
+      label = filename ?? 'unknown'
+    } else {
+      res.status(400).json({ error: 'Missing filePath or content' })
+      return
+    }
+
     if (entries.length === 0) {
       res.json([])
       return
@@ -49,13 +75,37 @@ router.post('/import', async (req, res) => {
     const items = await getAllItems()
     const results = matchItems(entries, items)
 
-    logger.info(`playlist import "${filename ?? 'unknown'}": ${entries.length} entries → ${results.filter(r => r.status === 'matched').length} matched, ${results.filter(r => r.status === 'low_confidence').length} low confidence, ${results.filter(r => r.status === 'unmatched').length} unmatched`)
+    logger.info(`playlist import "${label}": ${entries.length} entries → ${results.filter(r => r.status === 'matched').length} matched, ${results.filter(r => r.status === 'low_confidence').length} low confidence, ${results.filter(r => r.status === 'unmatched').length} unmatched`)
     res.json(results)
   } catch (err) {
     logger.error(`playlist import failed: ${String(err)}`)
     res.status(502).json({ error: String(err) })
   }
 })
+
+async function enrichEntriesFromFiles(entries: ParsedEntry[], m3uDir: string): Promise<ParsedEntry[]> {
+  // Resolve each entry's file path (absolute or relative to M3U directory)
+  const resolved = entries.map(e => {
+    const p = e.originalPath
+    if (!p) return null
+    return path.isAbsolute(p) ? p : path.resolve(m3uDir, p)
+  })
+
+  const tags = await readFileTagsBatch(resolved.map(p => p ?? ''))
+
+  return entries.map((e, i) => {
+    const t = tags[i]
+    const filePath = resolved[i]
+    return {
+      ...e,
+      resolvedFilePath: filePath,
+      title: t?.title ?? e.title,
+      artist: t?.artist ?? e.artist,
+      album: t?.album ?? e.album,
+      mbTrackId: t?.mbTrackId ?? e.mbTrackId,
+    }
+  })
+}
 
 router.post('/export', async (req, res) => {
   const body = req.body as ExportRequest
@@ -157,15 +207,23 @@ router.get('/dirs', async (req, res) => {
     return
   }
 
+  const includeFiles = req.query.files === 'm3u'
+
   try {
     const entries = await fs.readdir(targetDir, { withFileTypes: true })
     const dirs = entries
       .filter(e => e.isDirectory() && !e.name.startsWith('.'))
       .map(e => e.name)
       .sort()
-    res.json({ dirs, current: safeSub })
+    const files = includeFiles
+      ? entries
+          .filter(e => e.isFile() && /\.m3u8?$/i.test(e.name))
+          .map(e => e.name)
+          .sort()
+      : undefined
+    res.json({ dirs, files, current: safeSub })
   } catch {
-    res.json({ dirs: [], current: safeSub })
+    res.json({ dirs: [], files: includeFiles ? [] : undefined, current: safeSub })
   }
 })
 

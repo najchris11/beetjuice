@@ -155,17 +155,24 @@ export function useBulkDeleteAlbums() {
 
 export function useImportPlaylist() {
   return useMutation({
-    mutationFn: async (file: File) => {
-      const content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = e => resolve(e.target?.result as string)
-        reader.onerror = reject
-        reader.readAsText(file, 'utf-8')
-      })
+    mutationFn: async (input: File | { filePath: string }) => {
+      if (input instanceof File) {
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = e => resolve(e.target?.result as string)
+          reader.onerror = reject
+          reader.readAsText(input, 'utf-8')
+        })
+        return apiFetch<MatchResult[]>('/api/playlists/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, filename: input.name }),
+        })
+      }
       return apiFetch<MatchResult[]>('/api/playlists/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, filename: file.name }),
+        body: JSON.stringify({ filePath: input.filePath }),
       })
     },
   })

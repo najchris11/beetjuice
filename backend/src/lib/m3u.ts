@@ -32,6 +32,7 @@ export function parseM3u(content: string): ParsedEntry[] {
       album: pendingAlbum,
       duration: pendingDuration,
       mbTrackId: pendingMbTrackId,
+      resolvedFilePath: null,
     })
 
     pendingTitle = null
