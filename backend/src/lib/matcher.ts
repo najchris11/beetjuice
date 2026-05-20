@@ -26,6 +26,16 @@ function similarity(a: string, b: string): number {
   return 1.0 - distance(na, nb) / maxLen
 }
 
+function isArtistContained(artist: string, otherArtist: string): boolean {
+  const na = normalizeString(artist)
+  const nb = normalizeString(otherArtist)
+  if (na === nb) return true
+  if (!na || !nb) return false
+  // Check if one is contained in the other as a separate artist
+  const artistsB = nb.split(/\s+and\s+|\s*,\s*|&/).map(s => s.trim())
+  return artistsB.some(a => a === na)
+}
+
 interface NormalizedItem {
   item: Item
   normTitle: string
@@ -75,7 +85,14 @@ function matchEntry(
 
   for (const n of normalized) {
     const titleSim = normEntryTitle ? similarity(normEntryTitle, n.normTitle) : 0
-    const artistSim = normEntryArtist ? similarity(normEntryArtist, n.normArtist) : 0
+    let artistSim = normEntryArtist ? similarity(normEntryArtist, n.normArtist) : 0
+
+    // Boost artist similarity if one is contained in the other (handles collaborations)
+    if (normEntryArtist && n.normArtist && artistSim < 0.9) {
+      if (isArtistContained(entry.artist ?? '', n.item.artist ?? '')) {
+        artistSim = 0.95
+      }
+    }
 
     let confidence = titleSim * 0.50 + artistSim * 0.35
 

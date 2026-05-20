@@ -540,17 +540,17 @@ export default function Playlists() {
                                       </button>
                                     )
                                   })}
+                                </div>
+                              )}
+
+                              {canStage && (
+                                <div className="flex flex-wrap gap-2">
                                   <button
                                     onClick={() => rejectAllCandidates(i)}
                                     className="rounded-lg border px-2.5 py-1 text-[11px] border-red-500/40 bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"
                                   >
                                     None of these
                                   </button>
-                                </div>
-                              )}
-
-                              {canStage && (
-                                <div className="flex flex-wrap gap-2">
                                   <button
                                     onClick={() => setRowMode(i, 'library')}
                                     className={`rounded-lg px-2.5 py-1 text-[11px] border transition-colors ${
