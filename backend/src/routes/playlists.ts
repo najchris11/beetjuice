@@ -23,10 +23,11 @@ async function getAllItems(): Promise<Item[]> {
 }
 
 function makeRelative(absolutePath: string): string | null {
-  const lib = libraryPath()
-  if (!lib) return absolutePath
-  if (absolutePath.startsWith(lib)) {
-    return absolutePath.slice(lib.length).replace(/^\/+/, '')
+  // Try BEETS_LIBRARY_PATH first (clean tracks), then MUSIC_PATH (staged files outside clean library)
+  for (const root of [libraryPath(), musicPath()]) {
+    if (root && absolutePath.startsWith(root)) {
+      return absolutePath.slice(root.length).replace(/^\/+/, '')
+    }
   }
   return null
 }
@@ -68,7 +69,9 @@ router.post('/export', async (req, res) => {
   const lib = libraryPath()
   const mp = musicPath()
   const stagingFolder = navidrome.stagingFolder || '_import'
-  const stagingDir = lib ? path.join(lib, stagingFolder) : null
+  // Staging lives under MUSIC_PATH (outside the clean library), falling back to library root
+  const stagingRoot = mp || lib
+  const stagingDir = stagingRoot ? path.join(stagingRoot, stagingFolder) : null
 
   const result: ExportResult = {
     ok: false,
@@ -134,19 +137,23 @@ router.post('/test-navidrome', async (req, res) => {
 })
 
 router.get('/dirs', async (req, res) => {
-  const lib = libraryPath()
-  if (!lib) {
-    res.status(503).json({ error: 'BEETS_LIBRARY_PATH not configured' })
+  // root=music → browse from MUSIC_PATH; root=library (default) → BEETS_LIBRARY_PATH
+  const useMusic = req.query.root === 'music'
+  const root = useMusic ? musicPath() : libraryPath()
+  const rootLabel = useMusic ? 'MUSIC_PATH' : 'BEETS_LIBRARY_PATH'
+
+  if (!root) {
+    res.status(503).json({ error: `${rootLabel} not configured` })
     return
   }
 
   const subpath = (req.query.path as string) ?? ''
   const parts = subpath.split('/').filter(p => p && p !== '..' && p !== '.')
   const safeSub = parts.join('/')
-  const targetDir = safeSub ? path.join(lib, safeSub) : lib
+  const targetDir = safeSub ? path.join(root, safeSub) : root
 
-  if (!targetDir.startsWith(lib)) {
-    res.status(400).json({ error: 'Path outside library' })
+  if (!targetDir.startsWith(root)) {
+    res.status(400).json({ error: 'Path outside root' })
     return
   }
 

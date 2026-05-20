@@ -27,14 +27,19 @@ interface HealthResult {
   checks: Record<string, CheckResult>
 }
 
-function DirPicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function DirPicker({ value, onChange, placeholder, root = 'library' }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  root?: 'library' | 'music'
+}) {
   const [open, setOpen] = useState(false)
   const [browsePath, setBrowsePath] = useState('')
 
   const { data, isFetching } = useQuery({
-    queryKey: ['dirs', browsePath],
+    queryKey: ['dirs', root, browsePath],
     queryFn: (): Promise<{ dirs: string[]; current: string }> =>
-      fetch(`/api/playlists/dirs?path=${encodeURIComponent(browsePath)}`).then(r => r.json()),
+      fetch(`/api/playlists/dirs?path=${encodeURIComponent(browsePath)}&root=${root}`).then(r => r.json()),
     enabled: open,
     staleTime: 30_000,
   })
@@ -359,9 +364,10 @@ export default function Settings() {
             <DirPicker
               value={ndConfig.stagingFolder ?? ''}
               onChange={v => setNdConfig(c => ({ ...c, stagingFolder: v }))}
-              placeholder="_import (default)"
+              placeholder="_import (relative to music root)"
+              root="music"
             />
-            <p className="mt-1 text-xs text-[var(--text-muted)]/60">Unmatched tracks are copied here for beets to import</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]/60">Unmatched tracks are copied here for beets to import — browse from your full music mount</p>
           </div>
 
           <div className="flex items-center gap-3 pt-1">
