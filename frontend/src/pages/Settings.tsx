@@ -1,6 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useTestNavidrome } from '../hooks/useBeets.ts'
+import type { NavidromeConfig } from '../types/playlists.ts'
+
+const ND_STORAGE_KEY = 'beetjuice:navidrome-config'
+
+function loadNavidromeConfig(): NavidromeConfig {
+  try {
+    const raw = localStorage.getItem(ND_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
 
 interface CheckResult {
   ok: boolean
@@ -85,6 +98,22 @@ export default function Settings() {
 
   const [diagStatus, setDiagStatus] = useState<'idle' | 'running' | 'done'>('idle')
   const [health, setHealth] = useState<HealthResult | null>(null)
+
+  const [ndConfig, setNdConfig] = useState<NavidromeConfig>(loadNavidromeConfig)
+  const [ndSaved, setNdSaved] = useState(false)
+  const testNavidrome = useTestNavidrome()
+
+  useEffect(() => { setNdSaved(false) }, [ndConfig])
+
+  const saveNdConfig = () => {
+    localStorage.setItem(ND_STORAGE_KEY, JSON.stringify(ndConfig))
+    setNdSaved(true)
+  }
+
+  const testConnection = () => {
+    if (!ndConfig.url || !ndConfig.token) return
+    testNavidrome.mutate({ url: ndConfig.url, token: ndConfig.token })
+  }
 
   const runDiagnostics = async () => {
     setDiagStatus('running')
@@ -176,6 +205,57 @@ export default function Settings() {
             label="Environment"
             value={import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
           />
+        </div>
+      </div>
+
+      {/* Navidrome */}
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden">
+        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)]">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Navidrome</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Configure Navidrome integration for playlist export</p>
+        </div>
+        <div className="p-6 space-y-4">
+          {[
+            { key: 'url', label: 'Navidrome URL', placeholder: 'http://navidrome:4533', type: 'url' },
+            { key: 'token', label: 'Bearer Token', placeholder: 'your-token-here', type: 'password' },
+            { key: 'playlistsPath', label: 'Playlists Path', placeholder: '_playlists (relative to library root)', type: 'text' },
+            { key: 'stagingFolder', label: 'Staging Folder', placeholder: '_import (default)', type: 'text' },
+          ].map(({ key, label, placeholder, type }) => (
+            <div key={key}>
+              <label className="block text-xs text-[var(--text-muted)] font-medium mb-1.5">{label}</label>
+              <input
+                type={type}
+                value={(ndConfig[key as keyof NavidromeConfig] as string) ?? ''}
+                onChange={e => setNdConfig(c => ({ ...c, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/50 focus:outline-none focus:border-purple-500/50 font-mono"
+              />
+            </div>
+          ))}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={saveNdConfig}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/20 transition-all"
+            >
+              {ndSaved ? 'Saved' : 'Save'}
+            </button>
+            <button
+              onClick={testConnection}
+              disabled={!ndConfig.url || !ndConfig.token || testNavidrome.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-white/[0.04] text-[var(--text-muted)] hover:bg-white/[0.08] hover:text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed border border-[var(--border-subtle)] transition-all"
+            >
+              {testNavidrome.isPending ? 'Testing…' : 'Test Connection'}
+            </button>
+            {testNavidrome.data && (
+              <span className={`text-xs font-medium ${testNavidrome.data.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {testNavidrome.data.message}
+              </span>
+            )}
+            {testNavidrome.error && (
+              <span className="text-xs text-red-400">{String(testNavidrome.error)}</span>
+            )}
+          </div>
         </div>
       </div>
 

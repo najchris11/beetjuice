@@ -6,6 +6,7 @@ import AlbumDetail from './pages/AlbumDetail.tsx'
 import Duplicates from './pages/Duplicates.tsx'
 import Stats from './pages/Stats.tsx'
 import Settings from './pages/Settings.tsx'
+import Playlists from './pages/Playlists.tsx'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/album/:id" element={<AlbumDetail />} />
             <Route path="/duplicates" element={<Duplicates />} />
             <Route path="/stats" element={<Stats />} />
+            <Route path="/playlists" element={<Playlists />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

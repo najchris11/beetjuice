@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Album, AlbumSummary, Item, DuplicateGroup, Stats } from '../types/beets.ts'
+import type { MatchResult, ExportRequest, ExportResult } from '../types/playlists.ts'
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options)
@@ -149,6 +150,46 @@ export function useBulkDeleteAlbums() {
       qc.invalidateQueries({ queryKey: ['duplicates'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
     },
+  })
+}
+
+export function useImportPlaylist() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = e => resolve(e.target?.result as string)
+        reader.onerror = reject
+        reader.readAsText(file, 'utf-8')
+      })
+      return apiFetch<MatchResult[]>('/api/playlists/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, filename: file.name }),
+      })
+    },
+  })
+}
+
+export function useExportPlaylist() {
+  return useMutation({
+    mutationFn: (req: ExportRequest) =>
+      apiFetch<ExportResult>('/api/playlists/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      }),
+  })
+}
+
+export function useTestNavidrome() {
+  return useMutation({
+    mutationFn: ({ url, token }: { url: string; token: string }) =>
+      apiFetch<{ ok: boolean; message: string }>('/api/playlists/test-navidrome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, token }),
+      }),
   })
 }
 

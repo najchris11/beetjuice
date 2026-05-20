@@ -8,6 +8,7 @@ import itemRoutes from './routes/items.js'
 import duplicateRoutes from './routes/duplicates.js'
 import statsRoutes from './routes/stats.js'
 import healthRoutes from './routes/health.js'
+import playlistRoutes from './routes/playlists.js'
 import { logger } from './lib/logger.js'
 
 const app = express()
@@ -35,6 +36,7 @@ app.use('/api/items', itemRoutes)
 app.use('/api/duplicates', duplicateRoutes)
 app.use('/api/stats', statsRoutes)
 app.use('/api/health', healthRoutes)
+app.use('/api/playlists', playlistRoutes)
 
 app.get('/api/config', (_req, res) => {
   res.json({
