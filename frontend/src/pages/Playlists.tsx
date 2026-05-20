@@ -271,7 +271,7 @@ export default function Playlists() {
   }
 
   const rejectAllCandidates = (i: number) => {
-    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, selectedCandidateId: null, included: false } : r))
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, selectedCandidateId: null, mode: 'stage', included: true } : r))
   }
 
   const includedCount = rows.filter(r => r.included).length
